@@ -1,38 +1,47 @@
 #pragma once
 
-#include <Adafruit_PWMServoDriver.h>
-#include <ArduinoMqttClient.h>
-#include <Ethernet.h>
-
 #include "./config.h"
-#include "./servo.h";
+#include "./logging.h"
 
-EthernetClient ethernet;
-MqttClient mqttClient(ethernet);
+#ifdef USE_ETHERNET
+#include <Ethernet.h>
+#endif
+
+#ifdef USE_MQTT
+#include <ArduinoMqttClient.h>
+#endif // USE_MQTT
+
+#ifdef USE_SERVOS
+#include "./servo.h";
+#include <Adafruit_PWMServoDriver.h>
+#endif // USE_SERVOS
+
+EthernetClient wire;
+MqttClient mqttClient(wire);
 Servos::ServoController servoCtrl = Servos::ServoController();
 
 void setup() {
-#ifdef USE_SERIAL
-  Serial.begin(9600);
-  Serial.println("Serial output initialised..");
-#endif
+  logging::setup();
 
-  // Ethernet.begin(mac, ip);
-  // while (!ethernet.connected()) {
-  //   Serial.print("ethernet not connected...");
-  //   Serial.println();
-  //   delay(100);
-  // }
+#ifdef USE_ETHERNET
+  Ethernet.begin(ethernetMacAddress, ethernetIpAddress);
+#endif // USE_ETHERNET
 
-  // if (!mqttClient.connect(broker, port)) {
-  //   Serial.print("MQTT connection failed...");
-  //   Serial.println();
-  //   while (1)
-  //     ;
-  // }
+  while (!wire.connected()) {
+    logging::println("network not connected...");
+    delay(100);
+  }
 
-  // Serial.print("MQTT broker connection established!");
-  // Serial.println();
+#ifdef USE_MQTT
+  if (!mqttClient.connect(broker, port)) {
+    logging::println("MQTT connection failed!");
+    while (1)
+      ;
+  }
+
+  Serial.print("MQTT broker connection established!");
+  Serial.println();
+#endif // USE_MQTT
 
   // servo setup:
   // setupServos();
@@ -82,15 +91,15 @@ void reportServoState() {
   }
 }
 
-void setupServos() { 
-  servoCtrl.SetServoProps(0, 250, 450); 
-  servoCtrl.SetServoProps(1, 250, 450); 
-  servoCtrl.SetServoProps(2, 250, 450); 
-  servoCtrl.SetServoProps(3, 250, 450); 
-  servoCtrl.SetServoProps(4, 250, 450); 
-  servoCtrl.SetServoProps(5, 250, 450); 
-  servoCtrl.SetServoProps(6, 250, 450); 
-  servoCtrl.SetServoProps(7, 250, 450); 
+void setupServos() {
+  servoCtrl.SetServoProps(0, 250, 450);
+  servoCtrl.SetServoProps(1, 250, 450);
+  servoCtrl.SetServoProps(2, 250, 450);
+  servoCtrl.SetServoProps(3, 250, 450);
+  servoCtrl.SetServoProps(4, 250, 450);
+  servoCtrl.SetServoProps(5, 250, 450);
+  servoCtrl.SetServoProps(6, 250, 450);
+  servoCtrl.SetServoProps(7, 250, 450);
 }
 
 void reportBlockOccupancyState() {
