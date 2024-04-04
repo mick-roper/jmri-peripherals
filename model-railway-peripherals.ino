@@ -232,7 +232,7 @@ void readRfidTags() {
         logging::print(rfidReaders[i].pin, DEC);
         logging::println(" uid: ");
         for (uint8_t b = 0; b < uidLength; b++) {
-          logging::print(uid[b], DEC);
+          logging::print(uid[b], HEX);
         }
         logging::print("\n\n");
       }
