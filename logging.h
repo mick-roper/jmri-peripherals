@@ -4,7 +4,7 @@
 namespace logging {
 static void setup() {
 #ifdef USE_SERIAL
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial)
     ;
   Serial.println("Serial output initialised...");
@@ -17,9 +17,21 @@ static void println(String s) {
 #endif // USE_SERIAL
 };
 
+static void println(unsigned int i, int x = 10) {
+#ifdef USE_SERIAL
+  Serial.println(i, x);
+#endif // USE_SERIAL
+}
+
 static void print(String s) {
 #ifdef USE_SERIAL
-  Serial.println(s);
+  Serial.print(s);
+#endif // USE_SERIAL
+}
+
+static void print(unsigned int i, int x = 10) {
+#ifdef USE_SERIAL
+  Serial.print(i, x);
 #endif // USE_SERIAL
 }
 } // namespace logging

@@ -4,7 +4,6 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <Ethernet.h>
 #include <MQTTClient.h>
-#include <NfcAdapter.h>
 #include <PN532.h>
 #include <PN532_I2C.h>
 #include <Wire.h>
@@ -21,8 +20,8 @@ enum ServoState : uint8_t {
 };
 
 struct Servo {
-  uint8_t driverIndex;
-  uint8_t pinIndex;
+  uint8_t driver;
+  uint8_t pin;
   uint8_t pwmMin;
   uint8_t pwmMax;
   uint8_t currentPos;
@@ -53,7 +52,7 @@ Servo servos[servoCount] = {
 };
 
 PN532_I2C pn532_i2c(Wire);
-NfcAdapter nfc = NfcAdapter(pn532_i2c);
+PN532 nfc = PN532(pn532_i2c);
 const uint8_t rfidReaderCount = 2;
 RfidReader rfidReaders[rfidReaderCount] = {
     RfidReader{0x70, 0},
@@ -62,6 +61,9 @@ RfidReader rfidReaders[rfidReaderCount] = {
 
 void setup() {
   logging::setup();
+
+  logging::println("initialising peripherals...");
+
   Wire.begin();
 
 #ifdef USE_ETHERNET
@@ -84,6 +86,34 @@ void setup() {
   mqttClient.onMessage(mqttMessageHandler);
   mqttClient.subscribe(topic);
 #endif
+
+  for (uint8_t i = 0; i < rfidReaderCount; i++) {
+    logging::print("checking for RFID reader on pca: ");
+    logging::print(rfidReaders[i].pcaAddress, HEX);
+    logging::print(" pin: ");
+    logging::print(rfidReaders[i].pin);
+    logging::println("...");
+
+    pcaSelect(rfidReaders[i].pcaAddress, rfidReaders[i].pin);
+    nfc.begin();
+
+    uint32_t versiondata = nfc.getFirmwareVersion();
+    if (!versiondata) {
+      logging::println("Didn't find PN53x board");
+      continue;
+    }
+
+    logging::print("Found chip PN5");
+    logging::println((versiondata >> 24) & 0xFF, HEX);
+    logging::print("Firmware ver. ");
+    logging::print((versiondata >> 16) & 0xFF, DEC);
+    logging::print('.');
+    logging::println((versiondata >> 8) & 0xFF, DEC);
+
+    nfc.SAMConfig();
+  }
+
+  logging::println("--- peripherals initialised! ---\n\n");
 }
 
 void loop() {
@@ -115,20 +145,20 @@ void moveServos() {
     return;
   }
 
+  Adafruit_PWMServoDriver driver;
+
   for (uint8_t i = 0; i < servoCount; i++) {
     if (servos[i].state == ServoState::INTENT_TO_CLOSE) {
+      driver = Adafruit_PWMServoDriver(servos[i].driver);
       if (servos[i].currentPos > servos[i].pwmMin) {
-        servos[i].currentPos--;
-        pwmDrivers[servos[i].driverIndex].setPWM(servos[i].pinIndex, 0,
-                                                 servos[i].currentPos);
+        driver.setPWM(servos[i].pin, 0, servos[i].currentPos--);
       } else {
         servos[i].state = ServoState::CLOSED;
       }
     } else if (servos[i].state == ServoState::INTENT_TO_THROW) {
+      driver = Adafruit_PWMServoDriver(servos[i].driver);
       if (servos[i].currentPos < servos[i].pwmMax) {
-        servos[i].currentPos++;
-        pwmDrivers[servos[i].driverIndex].setPWM(servos[i].pinIndex, 0,
-                                                 servos[i].currentPos);
+        driver.setPWM(servos[i].pin, 0, servos[i].currentPos++);
       } else {
         servos[i].state = ServoState::THROWN;
       }
@@ -147,10 +177,10 @@ void reportServoState() {
 
   char topic[15];
   const String closed = "CLOSED";
-  const String thrown = "CLOSED";
-  const String unknown = "CLOSED";
+  const String thrown = "THROWN";
+  const String unknown = "UNKNOWN";
   for (uint8_t i = 0; i < servoCount; i++) {
-    sprintf(topic, "track/turnout/%d", i+1);
+    sprintf(topic, "track/turnout/%d", i + 1);
     switch (servos[i].state) {
     case ServoState::CLOSED: {
       publishMessage(topic, closed);
@@ -186,25 +216,49 @@ void mqttMessageHandler(String &topic, String &payload) {
 uint64_t lastRfidRead;
 
 void readRfidTags() {
-  if (millis() - lastRfidRead < 250) {
-    return;
-  }
+  if (millis() - lastRfidRead > 250) {
+    uint8_t success;
+    uint8_t uid[7];
+    uint8_t uidLength;
+    for (uint8_t i = 0; i < rfidReaderCount; i++) {
+      pcaSelect(rfidReaders[i].pcaAddress, rfidReaders[i].pin);
+      success =
+          nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 25);
 
-  char buffer[40];
-  for (uint8_t i = 0; i < rfidReaderCount; i++) {
-    pcaSelect(rfidReaders[i].pcaAddress, rfidReaders[i].pin);
-    if (nfc.tagPresent()) {
-      NfcTag t = nfc.read();
-      sprintf(buffer, "pca: %d pin: %d: UID: %s", rfidReaders[i].pcaAddress, rfidReaders[i].pin, t.getUidString());
-      logging::println(buffer);
+      if (success) {
+        logging::print("pca: ");
+        logging::print(rfidReaders[i].pcaAddress, HEX);
+        logging::print(" pin: ");
+        logging::print(rfidReaders[i].pin, DEC);
+        logging::println(" uid: ");
+        for (uint8_t b = 0; b < uidLength; b++) {
+          logging::print(uid[b], DEC);
+        }
+        logging::print("\n\n");
+      }
     }
-  }
 
-  lastRfidRead = millis();
+    lastRfidRead = millis();
+  }
 }
 
 void publishMessage(String const &topic, String const &message) {
 #ifdef USE_MQTT
   mqttClient.publish(topic, message);
 #endif
+}
+
+void printCurrentRfidReaderFirmwareVersion() {
+  uint32_t versiondata = nfc.getFirmwareVersion();
+  if (!versiondata) {
+    Serial.print("Didn't find PN53x board");
+    return;
+  }
+
+  Serial.print("Found chip PN5");
+  Serial.println((versiondata >> 24) & 0xFF, HEX);
+  Serial.print("Firmware ver. ");
+  Serial.print((versiondata >> 16) & 0xFF, DEC);
+  Serial.print('.');
+  Serial.println((versiondata >> 8) & 0xFF, DEC);
 }
