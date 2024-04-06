@@ -8,9 +8,16 @@
 #include <PN532_I2C.h>
 #include <Wire.h>
 
-// #define USE_ETHERNET
-// #define USE_MQTT
+byte ethernetMacAddress[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
+const IPAddress ethernetIpAddress(192, 168, 1, 201);
+const char broker[] = "HW101075";
+const uint16_t port = 1883;
+const char topic[] = "track/#";
 
+EthernetClient ethernet;
+MQTTClient mqttClient(ethernet);
+
+#ifdef USE_SERVOS
 enum ServoState : uint8_t {
   UNKNOWN,
   INTENT_TO_CLOSE,
@@ -28,20 +35,6 @@ struct Servo {
   ServoState state;
 };
 
-struct RfidReader {
-  uint8_t pcaAddress;
-  uint8_t pin;
-};
-
-byte ethernetMacAddress[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-const IPAddress ethernetIpAddress(192, 168, 1, 201);
-const char broker[] = "HW101075";
-const uint16_t port = 1883;
-const char topic[] = "track/#";
-
-EthernetClient ethernet;
-MQTTClient mqttClient(ethernet);
-
 const uint8_t servoCount = 8;
 Adafruit_PWMServoDriver pwmDrivers[servoCount / 8] = {
     Adafruit_PWMServoDriver(0x40)};
@@ -49,6 +42,13 @@ Servo servos[servoCount] = {
     Servo{0, 0, 350, 450}, Servo{0, 1, 350, 450}, Servo{0, 2, 350, 450},
     Servo{0, 3, 350, 450}, Servo{0, 4, 350, 450}, Servo{0, 5, 350, 450},
     Servo{0, 6, 350, 450}, Servo{0, 7, 350, 450},
+};
+#endif
+
+#ifdef USE_RFID
+struct RfidReader {
+  uint8_t pcaAddress;
+  uint8_t pin;
 };
 
 PN532_I2C pn532_i2c(Wire);
@@ -58,6 +58,7 @@ RfidReader rfidReaders[rfidReaderCount] = {
     RfidReader{0x70, 0},
     RfidReader{0x70, 1},
 };
+#endif
 
 void setup() {
   logging::setup();
@@ -87,6 +88,7 @@ void setup() {
   mqttClient.subscribe(topic);
 #endif
 
+#ifdef USE_RFID
   for (uint8_t i = 0; i < rfidReaderCount; i++) {
     logging::print("checking for RFID reader on pca: ");
     logging::print(rfidReaders[i].pcaAddress, HEX);
@@ -112,6 +114,7 @@ void setup() {
 
     nfc.SAMConfig();
   }
+#endif
 
   logging::println("--- peripherals initialised! ---\n\n");
 }
@@ -121,12 +124,10 @@ void loop() {
   mqttClient.loop();
 #endif
 
-  // 1: update stuff
   moveServos();
-
-  // 2: report status
   reportServoState();
   readRfidTags();
+  reportAnalogOccupancy();
 }
 
 void pcaSelect(uint8_t pca, uint8_t pin) {
@@ -138,9 +139,12 @@ void pcaSelect(uint8_t pca, uint8_t pin) {
   Wire.endTransmission();
 }
 
+#ifdef USE_SERVOS
 uint64_t lastServoMove;
+#endif
 
 void moveServos() {
+#ifdef USE_SERVOS
   if (millis() - lastServoMove < 50) {
     return;
   }
@@ -166,11 +170,15 @@ void moveServos() {
   }
 
   lastServoMove = millis();
+#endif
 }
 
+#ifdef USE_SERVOS
 uint64_t lastServoReport;
+#endif
 
 void reportServoState() {
+#ifdef USE_SERVOS
   if (millis() - lastServoReport < 1000) {
     return;
   }
@@ -197,9 +205,11 @@ void reportServoState() {
   }
 
   lastServoReport = millis();
+#endif
 }
 
 void mqttMessageHandler(String &topic, String &payload) {
+#ifdef USE_SERVOS
   if (topic.startsWith("track/turnout/")) {
     uint8_t i = topic.substring(14).toInt();
     i -= 1;
@@ -209,6 +219,7 @@ void mqttMessageHandler(String &topic, String &payload) {
       servos[i].state = ServoState::INTENT_TO_CLOSE;
     }
   }
+#endif
 
   // TODO: handle other cases here
 }
@@ -216,6 +227,7 @@ void mqttMessageHandler(String &topic, String &payload) {
 uint64_t lastRfidRead;
 
 void readRfidTags() {
+#ifdef USE_RFID
   if (millis() - lastRfidRead > 250) {
     uint8_t success;
     uint8_t uid[7];
@@ -240,6 +252,7 @@ void readRfidTags() {
 
     lastRfidRead = millis();
   }
+#endif
 }
 
 void publishMessage(String const &topic, String const &message) {
@@ -249,6 +262,7 @@ void publishMessage(String const &topic, String const &message) {
 }
 
 void printCurrentRfidReaderFirmwareVersion() {
+#ifdef USE_RFID
   uint32_t versiondata = nfc.getFirmwareVersion();
   if (!versiondata) {
     Serial.print("Didn't find PN53x board");
@@ -261,4 +275,27 @@ void printCurrentRfidReaderFirmwareVersion() {
   Serial.print((versiondata >> 16) & 0xFF, DEC);
   Serial.print('.');
   Serial.println((versiondata >> 8) & 0xFF, DEC);
+#endif
+}
+
+#ifdef USE_ANALOG_DETECTION
+uint64_t lastAnalogRead;
+#endif
+
+void reportAnalogOccupancy() {
+#ifdef USE_ANALOG_DETECTION
+  if (millis() - lastAnalogRead < 500) {
+    return;
+  }
+
+  int value = analogRead(PIN0);
+  logging::print("analog detection -- DETECTOR 0: ");
+  if (value) {
+    logging::println("OCCUPIED");
+  } else {
+    logging::println("UNOCCUPIED");
+  }
+
+  lastAnalogRead = millis();
+#endif
 }
