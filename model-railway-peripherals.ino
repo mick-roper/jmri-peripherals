@@ -8,6 +8,8 @@
 #include <PN532_I2C.h>
 #include <Wire.h>
 
+#include "./EmonLib.h"
+
 byte ethernetMacAddress[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 const IPAddress ethernetIpAddress(192, 168, 1, 201);
 const char broker[] = "HW101075";
@@ -59,6 +61,8 @@ RfidReader rfidReaders[rfidReaderCount] = {
     RfidReader{0x70, 1},
 };
 #endif
+
+EnergyMonitor emon1;
 
 void setup() {
   logging::setup();
@@ -115,6 +119,9 @@ void setup() {
     nfc.SAMConfig();
   }
 #endif
+
+  // CT readers
+  emon1.current(A0, 111.1);
 
   logging::println("--- peripherals initialised! ---\n\n");
 }
@@ -284,18 +291,18 @@ uint64_t lastAnalogRead;
 
 void reportAnalogOccupancy() {
 #ifdef USE_ANALOG_DETECTION
-  if (millis() - lastAnalogRead < 500) {
+  if (millis() - lastAnalogRead < 1000) {
     return;
   }
 
-  int value = analogRead(PIN0);
+  lastAnalogRead = millis();
+  double irms = emon1.calcIrms(1000);
+
   logging::print("analog detection -- DETECTOR 0: ");
-  if (value) {
+  if (irms * 230.0 > 15) {
     logging::println("OCCUPIED");
   } else {
     logging::println("UNOCCUPIED");
   }
-
-  lastAnalogRead = millis();
 #endif
 }
