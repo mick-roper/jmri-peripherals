@@ -1,4 +1,4 @@
-
+#include "./config.h"
 #include "./logging.h"
 
 #include <Adafruit_PWMServoDriver.h>
@@ -10,56 +10,17 @@
 
 #include "./EmonLib.h"
 
-byte ethernetMacAddress[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-const IPAddress ethernetIpAddress(192, 168, 1, 201);
-const char broker[] = "HW101075";
-const uint16_t port = 1883;
-const char topic[] = "track/#";
-
+#ifdef USE_ETHERNET
 EthernetClient ethernet;
+#endif
+
+#ifdef USE_MQTT
 MQTTClient mqttClient(ethernet);
-
-#ifdef USE_SERVOS
-enum ServoState : uint8_t {
-  UNKNOWN,
-  INTENT_TO_CLOSE,
-  CLOSED,
-  INTENT_TO_THROW,
-  THROWN,
-};
-
-struct Servo {
-  uint8_t driver;
-  uint8_t pin;
-  uint8_t pwmMin;
-  uint8_t pwmMax;
-  uint8_t currentPos;
-  ServoState state;
-};
-
-const uint8_t servoCount = 8;
-Adafruit_PWMServoDriver pwmDrivers[servoCount / 8] = {
-    Adafruit_PWMServoDriver(0x40)};
-Servo servos[servoCount] = {
-    Servo{0, 0, 350, 450}, Servo{0, 1, 350, 450}, Servo{0, 2, 350, 450},
-    Servo{0, 3, 350, 450}, Servo{0, 4, 350, 450}, Servo{0, 5, 350, 450},
-    Servo{0, 6, 350, 450}, Servo{0, 7, 350, 450},
-};
 #endif
 
 #ifdef USE_RFID
-struct RfidReader {
-  uint8_t pcaAddress;
-  uint8_t pin;
-};
-
 PN532_I2C pn532_i2c(Wire);
 PN532 nfc = PN532(pn532_i2c);
-const uint8_t rfidReaderCount = 2;
-RfidReader rfidReaders[rfidReaderCount] = {
-    RfidReader{0x70, 0},
-    RfidReader{0x70, 1},
-};
 #endif
 
 EnergyMonitor emon1;
