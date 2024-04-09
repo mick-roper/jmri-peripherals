@@ -53,6 +53,14 @@ void setup() {
   mqttClient.subscribe(topic);
 #endif
 
+#ifdef USE_SERVOS
+for (uint8_t i = 0; i < driverCount; i++) {
+  drivers[i].begin();
+  drivers[i].setOscillatorFrequency(27000000);
+  drivers[i].setPWMFreq(50);
+}
+#endif
+
 #ifdef USE_RFID
   for (uint8_t i = 0; i < rfidReaderCount; i++) {
     logging::print("checking for RFID reader on pca: ");
@@ -81,8 +89,10 @@ void setup() {
   }
 #endif
 
+  #ifdef USE_ANALOG_DETECTION
   // CT readers
   emon1.current(A0, 111.1);
+  #endif
 
   logging::println("--- peripherals initialised! ---\n\n");
 }
@@ -91,6 +101,8 @@ void loop() {
 #ifdef USE_MQTT
   mqttClient.loop();
 #endif
+
+  readSerial();
 
   moveServos();
   reportServoState();
@@ -117,22 +129,20 @@ void moveServos() {
     return;
   }
 
-  Adafruit_PWMServoDriver driver;
-
   for (uint8_t i = 0; i < servoCount; i++) {
     if (servos[i].state == ServoState::INTENT_TO_CLOSE) {
-      driver = Adafruit_PWMServoDriver(servos[i].driver);
       if (servos[i].currentPos > servos[i].pwmMin) {
-        driver.setPWM(servos[i].pin, 0, servos[i].currentPos--);
+        drivers[servos[i].driver].setPWM(servos[i].pin, 0, servos[i].currentPos--);
       } else {
         servos[i].state = ServoState::CLOSED;
+        drivers[servos[i].driver].setPin(servos[i].pin + 8, 0);
       }
     } else if (servos[i].state == ServoState::INTENT_TO_THROW) {
-      driver = Adafruit_PWMServoDriver(servos[i].driver);
       if (servos[i].currentPos < servos[i].pwmMax) {
-        driver.setPWM(servos[i].pin, 0, servos[i].currentPos++);
+        drivers[servos[i].driver].setPWM(servos[i].pin, 0, servos[i].currentPos++);
       } else {
         servos[i].state = ServoState::THROWN;
+        drivers[servos[i].driver].setPin(servos[i].pin + 8, 4096);
       }
     }
   }
@@ -152,44 +162,25 @@ void reportServoState() {
   }
 
   char topic[15];
-  const String closed = "CLOSED";
-  const String thrown = "THROWN";
-  const String unknown = "UNKNOWN";
   for (uint8_t i = 0; i < servoCount; i++) {
     sprintf(topic, "track/turnout/%d", i + 1);
     switch (servos[i].state) {
     case ServoState::CLOSED: {
-      publishMessage(topic, closed);
+      publishMessage(topic, "CLOSED");
       break;
     }
     case ServoState::THROWN: {
-      publishMessage(topic, thrown);
+      publishMessage(topic, "THROWN");
       break;
     }
     default:
-      publishMessage(topic, unknown);
+      publishMessage(topic, "UNKNOWN");
       break;
     }
   }
 
   lastServoReport = millis();
 #endif
-}
-
-void mqttMessageHandler(String &topic, String &payload) {
-#ifdef USE_SERVOS
-  if (topic.startsWith("track/turnout/")) {
-    uint8_t i = topic.substring(14).toInt();
-    i -= 1;
-    if (payload == "THROWN") {
-      servos[i].state = ServoState::INTENT_TO_THROW;
-    } else if (payload == "CLOSED") {
-      servos[i].state = ServoState::INTENT_TO_CLOSE;
-    }
-  }
-#endif
-
-  // TODO: handle other cases here
 }
 
 uint64_t lastRfidRead;
@@ -266,4 +257,43 @@ void reportAnalogOccupancy() {
     logging::println("UNOCCUPIED");
   }
 #endif
+}
+
+void readSerial() {
+#ifdef USE_SERIAL
+  if (Serial.available()) {
+    String s = Serial.readString();
+    int i = s.indexOf(" ");
+    if (i < 0) {
+      return;
+    }
+
+    String topic = (s.substring(0, i));
+    String message = s.substring(i);
+
+    logging::print("got topic ");
+    logging::print(topic);
+    logging::print(" message: ");
+    logging::print(message);
+    logging::print("\n");
+
+    mqttMessageHandler(topic, message);
+  }
+#endif
+}
+
+void mqttMessageHandler(String &topic, String &payload) {
+#ifdef USE_SERVOS
+  for (uint8_t i = 0; i < servoCount; i++) {
+    if (servos[i].id == topic) {
+      if (payload == "THROWN") {
+        servos[i].state = ServoState::INTENT_TO_THROW;
+      } else if (payload == "CLOSED") {
+        servos[i].state = ServoState::INTENT_TO_CLOSE;
+      }
+    }
+  }
+#endif
+
+  // TODO: handle other cases here
 }

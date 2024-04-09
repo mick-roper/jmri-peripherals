@@ -4,13 +4,14 @@
 #include <Ethernet.h>
 #include <PN532.h>
 #include <PN532_I2C.h>
+#include <Adafruit_PWMServoDriver.h>
 
 #define USE_SERIAL
-#define USE_ETHERNET
-#define USE_MQTT
+// #define USE_ETHERNET
+// #define USE_MQTT
 #define USE_SERVOS
-#define USE_RFID
-#define USE_ANALOG_DETECTION
+// #define USE_RFID
+// #define USE_ANALOG_DETECTION
 
 #ifdef USE_ETHERNET
 byte ethernetMacAddress[] = {0xA8, 0x61, 0x0A, 0xAF, 0x07, 0x2C};
@@ -33,6 +34,7 @@ enum ServoState : uint8_t {
 };
 
 struct Servo {
+  String id;
   uint8_t driver;
   uint8_t pin;
   uint8_t pwmMin;
@@ -41,11 +43,21 @@ struct Servo {
   ServoState state;
 };
 
+const uint8_t driverCount = 1;
+Adafruit_PWMServoDriver drivers[driverCount] = {
+  Adafruit_PWMServoDriver(0x40)
+};
+
 const uint8_t servoCount = 8;
 Servo servos[servoCount] = {
-    Servo{0x40, 0, 350, 450}, Servo{0x40, 1, 350, 450}, Servo{0x40, 2, 350, 450},
-    Servo{0x40, 3, 350, 450}, Servo{0x40, 4, 350, 450}, Servo{0x40, 5, 350, 450},
-    Servo{0x40, 6, 350, 450}, Servo{0x40, 7, 350, 450},
+    Servo{"track/turnout/1", 0, 0, 350, 450},
+    Servo{"track/turnout/2", 0, 1, 350, 450},
+    Servo{"track/turnout/3", 0, 2, 350, 450},
+    Servo{"track/turnout/4", 0, 3, 350, 450},
+    Servo{"track/turnout/5", 0, 4, 350, 450},
+    Servo{"track/turnout/6", 0, 5, 350, 450},
+    Servo{"track/turnout/7", 0, 6, 350, 450},
+    Servo{"track/turnout/8", 0, 7, 350, 450},
 };
 #endif
 
