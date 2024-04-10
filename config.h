@@ -49,14 +49,14 @@ Adafruit_PWMServoDriver drivers[driverCount] = {
 
 const uint8_t servoCount = 8;
 Servo servos[servoCount] = {
-    Servo{"track/turnout/1", 0, 0, 215, 270},
-    Servo{"track/turnout/2", 0, 1, 200, 300},
-    Servo{"track/turnout/3", 0, 2, 200, 300},
-    Servo{"track/turnout/4", 0, 3, 200, 300},
-    Servo{"track/turnout/5", 0, 4, 200, 300},
-    Servo{"track/turnout/6", 0, 5, 200, 300},
-    Servo{"track/turnout/7", 0, 6, 200, 300},
-    Servo{"track/turnout/8", 0, 7, 200, 300},
+    Servo{"track/turnout/0", 0, 0, 215, 270},
+    Servo{"track/turnout/1", 0, 1, 200, 280},
+    Servo{"track/turnout/2", 0, 2, 200, 280},
+    Servo{"track/turnout/3", 0, 3, 200, 260},
+    Servo{"track/turnout/4", 0, 4, 200, 280},
+    Servo{"track/turnout/5", 0, 5, 200, 280},
+    Servo{"track/turnout/6", 0, 6, 200, 280},
+    Servo{"track/turnout/7", 0, 7, 200, 280},
 };
 #endif
 

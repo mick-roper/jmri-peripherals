@@ -136,9 +136,6 @@ void moveServos() {
 
   for (uint8_t i = 0; i < servoCount; i++) {
     if (servos[i].state == ServoState::INTENT_TO_CLOSE) {
-      logging::print("closing servo ");
-      logging::println(i);
-
       if (servos[i].currentPos > servos[i].pwmMin) {
         drivers[servos[i].driver].setPWM(servos[i].pin, 0,
                                          servos[i].currentPos--);
@@ -293,18 +290,9 @@ void readSerial() {
 }
 
 void mqttMessageHandler(String &topic, String &payload) {
-  logging::println("topic: ");
-  logging::println(topic);
-  logging::println("payload: ");
-  logging::println(payload);
-
 #ifdef USE_SERVOS
   for (uint8_t i = 0; i < servoCount; i++) {
-    logging::print("testing servo ");
-    logging::println(i);
     if (servos[i].id == topic) {
-      logging::println("servo found!");
-
       if (payload == "THROWN") {
         logging::println("setting state to INTENT_TO_THROW");
         servos[i].state = ServoState::INTENT_TO_THROW;
