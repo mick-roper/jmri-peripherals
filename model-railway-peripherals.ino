@@ -30,14 +30,24 @@ void setup() {
 
   logging::println("initialising peripherals...");
 
-  Wire.begin();
-
 #ifdef USE_ETHERNET
-  Ethernet.begin(ethernetMacAddress, ethernetIpAddress);
-  while (!ethernet.connected()) {
-    logging::println("network not connected...");
-    delay(100);
+  Ethernet.init();
+  Ethernet.begin(mac);
+
+  // Check for Ethernet hardware present
+  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+    logging::println("Ethernet shield was not found.  Sorry, can't run without "
+                     "hardware. :(");
+    while (true)
+      ; // do nothing, no point running without Ethernet hardware
   }
+
+  if (Ethernet.linkStatus() == LinkOFF) {
+    logging::println("Ethernet cable is not connected.");
+    while (true)
+      ;
+  }
+  logging::println("device is connected to the network!");
 #endif
 
 #ifdef USE_MQTT
@@ -95,6 +105,8 @@ void setup() {
 #endif
 
 #ifdef USE_ANALOG_DETECTION
+  Wire.begin();
+
   // CT readers
   emon1.current(A0, 111.1);
 #endif
@@ -103,6 +115,10 @@ void setup() {
 }
 
 void loop() {
+#ifdef USE_ETHERNET
+  Ethernet.maintain();
+#endif
+
 #ifdef USE_MQTT
   mqttClient.loop();
 #endif
@@ -282,7 +298,7 @@ void readSerial() {
     }
 
     String topic = (s.substring(0, i));
-    String message = s.substring(i+1);
+    String message = s.substring(i + 1);
 
     mqttMessageHandler(topic, message);
   }

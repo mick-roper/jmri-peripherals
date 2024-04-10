@@ -7,15 +7,14 @@
 #include <Adafruit_PWMServoDriver.h>
 
 #define USE_SERIAL
-// #define USE_ETHERNET
+#define USE_ETHERNET
 // #define USE_MQTT
-#define USE_SERVOS
+// #define USE_SERVOS
 // #define USE_RFID
 // #define USE_ANALOG_DETECTION
 
 #ifdef USE_ETHERNET
-byte ethernetMacAddress[] = {0xA8, 0x61, 0x0A, 0xAF, 0x07, 0x2C};
-const IPAddress ethernetIpAddress(192, 168, 1, 202);
+byte mac[] = {0xA8, 0x61, 0x0A, 0xAF, 0x07, 0x2C};
 #endif
 
 #ifdef USE_MQTT
