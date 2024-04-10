@@ -54,11 +54,16 @@ void setup() {
 #endif
 
 #ifdef USE_SERVOS
-for (uint8_t i = 0; i < driverCount; i++) {
-  drivers[i].begin();
-  drivers[i].setOscillatorFrequency(27000000);
-  drivers[i].setPWMFreq(50);
-}
+  for (uint8_t i = 0; i < driverCount; i++) {
+    drivers[i].begin();
+    drivers[i].setOscillatorFrequency(27000000);
+    drivers[i].setPWMFreq(50);
+  }
+
+  for (uint8_t i = 0; i < servoCount; i++) {
+    servos[i].currentPos = servos[i].pwmMax;
+    servos[i].state = ServoState::INTENT_TO_CLOSE;
+  }
 #endif
 
 #ifdef USE_RFID
@@ -89,10 +94,10 @@ for (uint8_t i = 0; i < driverCount; i++) {
   }
 #endif
 
-  #ifdef USE_ANALOG_DETECTION
+#ifdef USE_ANALOG_DETECTION
   // CT readers
   emon1.current(A0, 111.1);
-  #endif
+#endif
 
   logging::println("--- peripherals initialised! ---\n\n");
 }
@@ -120,30 +125,41 @@ void pcaSelect(uint8_t pca, uint8_t pin) {
 }
 
 #ifdef USE_SERVOS
-uint64_t lastServoMove;
+uint64_t lastServoMove = millis();
 #endif
 
 void moveServos() {
 #ifdef USE_SERVOS
-  if (millis() - lastServoMove < 50) {
+  if (millis() - lastServoMove < 25) {
     return;
   }
 
   for (uint8_t i = 0; i < servoCount; i++) {
     if (servos[i].state == ServoState::INTENT_TO_CLOSE) {
+      logging::print("closing servo ");
+      logging::println(i);
+
       if (servos[i].currentPos > servos[i].pwmMin) {
-        drivers[servos[i].driver].setPWM(servos[i].pin, 0, servos[i].currentPos--);
+        drivers[servos[i].driver].setPWM(servos[i].pin, 0,
+                                         servos[i].currentPos--);
       } else {
         servos[i].state = ServoState::CLOSED;
         drivers[servos[i].driver].setPin(servos[i].pin + 8, 0);
       }
-    } else if (servos[i].state == ServoState::INTENT_TO_THROW) {
+
+      continue;
+    }
+
+    if (servos[i].state == ServoState::INTENT_TO_THROW) {
       if (servos[i].currentPos < servos[i].pwmMax) {
-        drivers[servos[i].driver].setPWM(servos[i].pin, 0, servos[i].currentPos++);
+        drivers[servos[i].driver].setPWM(servos[i].pin, 0,
+                                         servos[i].currentPos++);
       } else {
         servos[i].state = ServoState::THROWN;
         drivers[servos[i].driver].setPin(servos[i].pin + 8, 4096);
       }
+
+      continue;
     }
   }
 
@@ -152,7 +168,7 @@ void moveServos() {
 }
 
 #ifdef USE_SERVOS
-uint64_t lastServoReport;
+uint64_t lastServoReport = millis();
 #endif
 
 void reportServoState() {
@@ -183,7 +199,7 @@ void reportServoState() {
 #endif
 }
 
-uint64_t lastRfidRead;
+uint64_t lastRfidRead = millis();
 
 void readRfidTags() {
 #ifdef USE_RFID
@@ -238,7 +254,7 @@ void printCurrentRfidReaderFirmwareVersion() {
 }
 
 #ifdef USE_ANALOG_DETECTION
-uint64_t lastAnalogRead;
+uint64_t lastAnalogRead = millis();
 #endif
 
 void reportAnalogOccupancy() {
@@ -269,13 +285,7 @@ void readSerial() {
     }
 
     String topic = (s.substring(0, i));
-    String message = s.substring(i);
-
-    logging::print("got topic ");
-    logging::print(topic);
-    logging::print(" message: ");
-    logging::print(message);
-    logging::print("\n");
+    String message = s.substring(i+1);
 
     mqttMessageHandler(topic, message);
   }
@@ -283,14 +293,26 @@ void readSerial() {
 }
 
 void mqttMessageHandler(String &topic, String &payload) {
+  logging::println("topic: ");
+  logging::println(topic);
+  logging::println("payload: ");
+  logging::println(payload);
+
 #ifdef USE_SERVOS
   for (uint8_t i = 0; i < servoCount; i++) {
+    logging::print("testing servo ");
+    logging::println(i);
     if (servos[i].id == topic) {
+      logging::println("servo found!");
+
       if (payload == "THROWN") {
+        logging::println("setting state to INTENT_TO_THROW");
         servos[i].state = ServoState::INTENT_TO_THROW;
       } else if (payload == "CLOSED") {
+        logging::println("setting state to INTENT_TO_CLOSE");
         servos[i].state = ServoState::INTENT_TO_CLOSE;
       }
+      return;
     }
   }
 #endif

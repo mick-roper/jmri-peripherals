@@ -26,7 +26,6 @@ const char topic[] = "track/turnout/#";
 
 #ifdef USE_SERVOS
 enum ServoState : uint8_t {
-  UNKNOWN,
   INTENT_TO_CLOSE,
   CLOSED,
   INTENT_TO_THROW,
@@ -37,9 +36,9 @@ struct Servo {
   String id;
   uint8_t driver;
   uint8_t pin;
-  uint8_t pwmMin;
-  uint8_t pwmMax;
-  uint8_t currentPos;
+  uint16_t pwmMin;
+  uint16_t pwmMax;
+  uint16_t currentPos;
   ServoState state;
 };
 
@@ -50,14 +49,14 @@ Adafruit_PWMServoDriver drivers[driverCount] = {
 
 const uint8_t servoCount = 8;
 Servo servos[servoCount] = {
-    Servo{"track/turnout/1", 0, 0, 350, 450},
-    Servo{"track/turnout/2", 0, 1, 350, 450},
-    Servo{"track/turnout/3", 0, 2, 350, 450},
-    Servo{"track/turnout/4", 0, 3, 350, 450},
-    Servo{"track/turnout/5", 0, 4, 350, 450},
-    Servo{"track/turnout/6", 0, 5, 350, 450},
-    Servo{"track/turnout/7", 0, 6, 350, 450},
-    Servo{"track/turnout/8", 0, 7, 350, 450},
+    Servo{"track/turnout/1", 0, 0, 215, 270},
+    Servo{"track/turnout/2", 0, 1, 200, 300},
+    Servo{"track/turnout/3", 0, 2, 200, 300},
+    Servo{"track/turnout/4", 0, 3, 200, 300},
+    Servo{"track/turnout/5", 0, 4, 200, 300},
+    Servo{"track/turnout/6", 0, 5, 200, 300},
+    Servo{"track/turnout/7", 0, 6, 200, 300},
+    Servo{"track/turnout/8", 0, 7, 200, 300},
 };
 #endif
 
