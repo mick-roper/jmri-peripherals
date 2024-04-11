@@ -3,7 +3,7 @@
 
 #include <Adafruit_PWMServoDriver.h>
 #include <Ethernet.h>
-#include <MQTTClient.h>
+#include <PubSubClient.h>
 #include <PN532.h>
 #include <PN532_I2C.h>
 #include <Wire.h>
@@ -15,7 +15,7 @@ EthernetClient ethernet;
 #endif
 
 #ifdef USE_MQTT
-MQTTClient mqttClient(ethernet);
+PubSubClient mqttClient(ethernet);
 #endif
 
 #ifdef USE_RFID
@@ -51,16 +51,17 @@ void setup() {
 #endif
 
 #ifdef USE_MQTT
-  if (!mqttClient.connect(broker, port)) {
-    logging::println("MQTT connection failed!");
-    while (1)
-      ;
+  while (!mqttClient.connected()) {
+    if (mqttClient.connect("model-rail-peripherals")) {
+      logging::println("MQTT connected!");
+    } else {
+      logging::println("MQTT connection failed!");
+      delay(100);
+    }
   }
-
-  logging::println("MQTT connected!");
-
-  mqttClient.onMessage(mqttMessageHandler);
-  mqttClient.subscribe(topic);
+  mqttClient.setServer(brokerName, brokerPort);
+  mqttClient.subscribe(mqttTopic);
+  mqttClient.setCallback(mqttMessageHandler);
 #endif
 
 #ifdef USE_SERVOS
@@ -71,7 +72,7 @@ void setup() {
   }
 
   for (uint8_t i = 0; i < servoCount; i++) {
-    servos[i].currentPos = servos[i].pwmMax;
+    servos[i].currentPos = (servos[i].pwmMax - servos[i].pwmMin) / 2;
     servos[i].state = ServoState::INTENT_TO_CLOSE;
   }
 #endif
@@ -115,15 +116,9 @@ void setup() {
 }
 
 void loop() {
-#ifdef USE_ETHERNET
-  Ethernet.maintain();
-#endif
-
 #ifdef USE_MQTT
   mqttClient.loop();
 #endif
-
-  readSerial();
 
   moveServos();
   reportServoState();
@@ -141,7 +136,7 @@ void pcaSelect(uint8_t pca, uint8_t pin) {
 }
 
 #ifdef USE_SERVOS
-uint64_t lastServoMove = millis();
+uint64_t lastServoMove;
 #endif
 
 void moveServos() {
@@ -181,29 +176,27 @@ void moveServos() {
 }
 
 #ifdef USE_SERVOS
-uint64_t lastServoReport = millis();
+uint64_t lastServoReport;
 #endif
 
 void reportServoState() {
 #ifdef USE_SERVOS
-  if (millis() - lastServoReport < 1000) {
+  if (millis() - lastServoReport < 2000) {
     return;
   }
 
-  char topic[15];
   for (uint8_t i = 0; i < servoCount; i++) {
-    sprintf(topic, "track/turnout/%d", i + 1);
     switch (servos[i].state) {
     case ServoState::CLOSED: {
-      publishMessage(topic, "CLOSED");
+      publishMessage(servos[i].id.c_str(), "CLOSED");
       break;
     }
     case ServoState::THROWN: {
-      publishMessage(topic, "THROWN");
+      publishMessage(servos[i].id.c_str(), "THROWN");
       break;
     }
     default:
-      publishMessage(topic, "UNKNOWN");
+      publishMessage(servos[i].id.c_str(), "UNKNOWN");
       break;
     }
   }
@@ -212,7 +205,7 @@ void reportServoState() {
 #endif
 }
 
-uint64_t lastRfidRead = millis();
+uint64_t lastRfidRead;
 
 void readRfidTags() {
 #ifdef USE_RFID
@@ -243,7 +236,7 @@ void readRfidTags() {
 #endif
 }
 
-void publishMessage(String const &topic, String const &message) {
+void publishMessage(const char* topic, const char* message) {
 #ifdef USE_MQTT
   mqttClient.publish(topic, message);
 #endif
@@ -267,7 +260,7 @@ void printCurrentRfidReaderFirmwareVersion() {
 }
 
 #ifdef USE_ANALOG_DETECTION
-uint64_t lastAnalogRead = millis();
+uint64_t lastAnalogRead;
 #endif
 
 void reportAnalogOccupancy() {
@@ -288,31 +281,20 @@ void reportAnalogOccupancy() {
 #endif
 }
 
-void readSerial() {
-#ifdef USE_SERIAL
-  if (Serial.available()) {
-    String s = Serial.readString();
-    int i = s.indexOf(" ");
-    if (i < 0) {
-      return;
-    }
-
-    String topic = (s.substring(0, i));
-    String message = s.substring(i + 1);
-
-    mqttMessageHandler(topic, message);
+void mqttMessageHandler(char* topic, byte* payload, unsigned int length) {
+  char data[length];
+  for (uint32_t i = 0; i < length; i++) {
+    data[i] = payload[i];
   }
-#endif
-}
+  String message = String(data);
 
-void mqttMessageHandler(String &topic, String &payload) {
 #ifdef USE_SERVOS
   for (uint8_t i = 0; i < servoCount; i++) {
     if (servos[i].id == topic) {
-      if (payload == "THROWN") {
+      if (message == "THROWN") {
         logging::println("setting state to INTENT_TO_THROW");
         servos[i].state = ServoState::INTENT_TO_THROW;
-      } else if (payload == "CLOSED") {
+      } else if (message == "CLOSED") {
         logging::println("setting state to INTENT_TO_CLOSE");
         servos[i].state = ServoState::INTENT_TO_CLOSE;
       }

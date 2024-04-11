@@ -8,8 +8,8 @@
 
 #define USE_SERIAL
 #define USE_ETHERNET
-// #define USE_MQTT
-// #define USE_SERVOS
+#define USE_MQTT
+#define USE_SERVOS
 // #define USE_RFID
 // #define USE_ANALOG_DETECTION
 
@@ -18,9 +18,9 @@ byte mac[] = {0xA8, 0x61, 0x0A, 0xAF, 0x07, 0x2C};
 #endif
 
 #ifdef USE_MQTT
-const char broker[] = "HW101075";
-const uint16_t port = 1883;
-const char topic[] = "track/turnout/#";
+const char brokerName[] = "HW101075";
+const uint16_t brokerPort = 1883;
+const char mqttTopic[] = "track/turnout/#";
 #endif
 
 #ifdef USE_SERVOS
