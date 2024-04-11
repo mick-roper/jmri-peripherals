@@ -3,9 +3,9 @@
 
 #include <Adafruit_PWMServoDriver.h>
 #include <Ethernet.h>
-#include <PubSubClient.h>
 #include <PN532.h>
 #include <PN532_I2C.h>
+#include <PubSubClient.h>
 #include <Wire.h>
 
 #include "./EmonLib.h"
@@ -15,7 +15,7 @@ EthernetClient ethernet;
 #endif
 
 #ifdef USE_MQTT
-PubSubClient mqttClient(ethernet);
+PubSubClient mqttClient;
 #endif
 
 #ifdef USE_RFID
@@ -47,34 +47,39 @@ void setup() {
     while (true)
       ;
   }
+
   logging::println("device is connected to the network!");
 #endif
 
 #ifdef USE_MQTT
+  mqttClient.setClient(ethernet);
+  mqttClient.setServer(brokerIp, brokerPort);
+  mqttClient.setCallback(mqttMessageHandler);
+
   while (!mqttClient.connected()) {
-    if (mqttClient.connect("model-rail-peripherals")) {
+    if (mqttClient.connect("arduinoClient")) {
       logging::println("MQTT connected!");
     } else {
-      logging::println("MQTT connection failed!");
-      delay(100);
+      logging::print("MQTT connection failed: ");
+      logging::println(mqttClient.state());
+      delay(1000);
     }
   }
-  mqttClient.setServer(brokerName, brokerPort);
-  mqttClient.subscribe(mqttTopic);
-  mqttClient.setCallback(mqttMessageHandler);
+
+  mqttClient.subscribe(mqttTopic, 2);
+
+  logging::println("MQTT is set up!");
 #endif
 
 #ifdef USE_SERVOS
+  logging::println("configuring PWM drivers...");
   for (uint8_t i = 0; i < driverCount; i++) {
     drivers[i].begin();
     drivers[i].setOscillatorFrequency(27000000);
     drivers[i].setPWMFreq(50);
   }
 
-  for (uint8_t i = 0; i < servoCount; i++) {
-    servos[i].currentPos = (servos[i].pwmMax - servos[i].pwmMin) / 2;
-    servos[i].state = ServoState::INTENT_TO_CLOSE;
-  }
+  logging::println("PWM drivers configured!");
 #endif
 
 #ifdef USE_RFID
@@ -115,15 +120,31 @@ void setup() {
   logging::println("--- peripherals initialised! ---\n\n");
 }
 
+uint64_t lastServoStateChange;
+
 void loop() {
 #ifdef USE_MQTT
   mqttClient.loop();
 #endif
 
   moveServos();
-  reportServoState();
   readRfidTags();
   reportAnalogOccupancy();
+
+  if (millis() - lastServoStateChange > 5000) {
+    if (millis() % 2 == 0) {
+      for (uint8_t i = 0; i < servoCount; i++) {
+        servos[i].state = ServoState::INTENT_TO_THROW;
+      }
+    } else {
+
+      for (uint8_t i = 0; i < servoCount; i++) {
+        servos[i].state = ServoState::INTENT_TO_CLOSE;
+      }
+    }
+
+    lastServoStateChange = millis();
+  }
 }
 
 void pcaSelect(uint8_t pca, uint8_t pin) {
@@ -175,59 +196,58 @@ void moveServos() {
 #endif
 }
 
-#ifdef USE_SERVOS
-uint64_t lastServoReport;
-#endif
+// uint64_t lastServoReport;
 
-void reportServoState() {
-#ifdef USE_SERVOS
-  if (millis() - lastServoReport < 2000) {
-    return;
-  }
+// void reportServoState() {
+// #ifdef USE_SERVOS
+//   if (millis() - lastServoReport < 3000) {
+//     return;
+//   }
 
-  for (uint8_t i = 0; i < servoCount; i++) {
-    switch (servos[i].state) {
-    case ServoState::CLOSED: {
-      publishMessage(servos[i].id.c_str(), "CLOSED");
-      break;
-    }
-    case ServoState::THROWN: {
-      publishMessage(servos[i].id.c_str(), "THROWN");
-      break;
-    }
-    default:
-      publishMessage(servos[i].id.c_str(), "UNKNOWN");
-      break;
-    }
-  }
+//   for (uint8_t i = 0; i < servoCount; i++) {
+//     switch(servos[i].state) {
+//       case ServoState::THROWN: {
+//         mqttClient.publish(servos[i].id.c_str(), "THROWN");
+//         break;
+//       }
+//       case ServoState::CLOSED: {
+//         mqttClient.publish(servos[i].id.c_str(), "CLOSED");
+//         break;
+//       }
+//       default: {
+//         mqttClient.publish(servos[i].id.c_str(), "UNKNOWN");
+//         break;
+//       }
+//     }
+//   }
 
-  lastServoReport = millis();
-#endif
-}
+//   lastServoReport = millis();
+// #endif
+// }
 
 uint64_t lastRfidRead;
 
 void readRfidTags() {
 #ifdef USE_RFID
-  if (millis() - lastRfidRead > 250) {
+  if (millis() - lastRfidRead > 333) {
     uint8_t success;
     uint8_t uid[7];
     uint8_t uidLength;
+    String topic;
+    char message[14];
     for (uint8_t i = 0; i < rfidReaderCount; i++) {
       pcaSelect(rfidReaders[i].pcaAddress, rfidReaders[i].pin);
       success =
           nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 25);
 
       if (success) {
-        logging::print("pca: ");
-        logging::print(rfidReaders[i].pcaAddress, HEX);
-        logging::print(" pin: ");
-        logging::print(rfidReaders[i].pin, DEC);
-        logging::println(" uid: ");
-        for (uint8_t b = 0; b < uidLength; b++) {
-          logging::print(uid[b], HEX);
-        }
-        logging::print("\n\n");
+        topic = "show/reporter/" + i;
+        sprintf(message, "%x", uid);
+
+        logging::print("message: ");
+        logging::println(message);
+
+        publishMessage(topic.c_str(), message);
       }
     }
 
@@ -236,9 +256,9 @@ void readRfidTags() {
 #endif
 }
 
-void publishMessage(const char* topic, const char* message) {
+void publishMessage(const char *topic, const char *message) {
 #ifdef USE_MQTT
-  mqttClient.publish(topic, message);
+  mqttClient.publish(topic, message, false);
 #endif
 }
 
@@ -281,9 +301,12 @@ void reportAnalogOccupancy() {
 #endif
 }
 
-void mqttMessageHandler(char* topic, byte* payload, unsigned int length) {
+void mqttMessageHandler(char *topic, byte *payload, unsigned int length) {
+  logging::print("got message on topic: ");
+  logging::println(topic);
+
   char data[length];
-  for (uint32_t i = 0; i < length; i++) {
+  for (unsigned int i = 0; i < length; i++) {
     data[i] = payload[i];
   }
   String message = String(data);

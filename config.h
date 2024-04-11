@@ -18,7 +18,7 @@ byte mac[] = {0xA8, 0x61, 0x0A, 0xAF, 0x07, 0x2C};
 #endif
 
 #ifdef USE_MQTT
-const char brokerName[] = "HW101075";
+const IPAddress brokerIp = IPAddress(192,168,178,23);
 const uint16_t brokerPort = 1883;
 const char mqttTopic[] = "track/turnout/#";
 #endif
