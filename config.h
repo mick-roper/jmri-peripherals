@@ -1,10 +1,10 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <Adafruit_PWMServoDriver.h>
 #include <Ethernet.h>
 #include <PN532.h>
 #include <PN532_I2C.h>
-#include <Adafruit_PWMServoDriver.h>
 
 // #define USE_SERIAL
 #define USE_ETHERNET
@@ -19,9 +19,9 @@ byte mac[] = {0xA8, 0x61, 0x0A, 0xAF, 0x07, 0x2C};
 #endif
 
 #ifdef USE_MQTT
-const IPAddress brokerIp = IPAddress(192,168,178,23);
+const char *broker = "WINDOWS-NASO1K0";
 const uint16_t brokerPort = 1883;
-const char mqttTopic[] = "do/turnout/#";
+const char mqttTopic[] = "send/turnout/#";
 #endif
 
 #ifdef USE_SERVOS
@@ -43,20 +43,13 @@ struct Servo {
 };
 
 const uint8_t driverCount = 1;
-Adafruit_PWMServoDriver drivers[driverCount] = {
-  Adafruit_PWMServoDriver(0x40)
-};
+Adafruit_PWMServoDriver drivers[driverCount] = {Adafruit_PWMServoDriver(0x40)};
 
 const uint8_t servoCount = 8;
 Servo servos[servoCount] = {
-    Servo{0, 0, 215, 270},
-    Servo{0, 1, 200, 280},
-    Servo{0, 2, 200, 280},
-    Servo{0, 3, 200, 260},
-    Servo{0, 4, 200, 280},
-    Servo{0, 5, 200, 280},
-    Servo{0, 6, 200, 280},
-    Servo{0, 7, 200, 280},
+    Servo{0, 0, 215, 270}, Servo{0, 1, 200, 280}, Servo{0, 2, 200, 280},
+    Servo{0, 3, 200, 260}, Servo{0, 4, 200, 280}, Servo{0, 5, 200, 280},
+    Servo{0, 6, 200, 280}, Servo{0, 7, 200, 280},
 };
 #endif
 

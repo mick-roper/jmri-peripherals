@@ -53,7 +53,7 @@ void setup() {
 
 #ifdef USE_MQTT
   mqttClient.setClient(ethernet);
-  mqttClient.setServer(brokerIp, brokerPort);
+  mqttClient.setServer(broker, brokerPort);
   mqttClient.setCallback(mqttMessageHandler);
 
   while (!mqttClient.connected()) {
@@ -277,14 +277,14 @@ void reportAnalogOccupancy() {
 }
 
 void mqttMessageHandler(char *topic, byte *payload, unsigned int length) {
-  String t = String(topic);
-
   char data[length];
   for (unsigned int i = 0; i < length; i++) {
     data[i] = payload[i];
   }
 
+  String t = String(topic);
   String message = String(data);
+  publishMessage(topic, NULL);
 
 #ifdef USE_SERVOS
   int ix = t.lastIndexOf('/');
@@ -301,7 +301,6 @@ void mqttMessageHandler(char *topic, byte *payload, unsigned int length) {
       logging::println("setting state to INTENT_TO_CLOSE");
       servos[ix].state = ServoState::INTENT_TO_CLOSE;
     }
-    return;
   }
 #endif
 
