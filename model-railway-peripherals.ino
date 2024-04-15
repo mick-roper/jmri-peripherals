@@ -6,6 +6,7 @@
 #include <PN532.h>
 #include <PN532_I2C.h>
 #include <PubSubClient.h>
+#include <SPI.h>
 #include <Wire.h>
 
 #include "./EmonLib.h"
@@ -24,6 +25,8 @@ PN532 nfc = PN532(pn532_i2c);
 #endif
 
 EnergyMonitor emon1;
+
+int i;
 
 void setup() {
   logging::setup();
@@ -56,24 +59,12 @@ void setup() {
   mqttClient.setServer(broker, brokerPort);
   mqttClient.setCallback(mqttMessageHandler);
 
-  while (!mqttClient.connected()) {
-    if (mqttClient.connect("arduinoClient")) {
-      logging::println("MQTT connected!");
-    } else {
-      logging::print("MQTT connection failed: ");
-      logging::println(mqttClient.state());
-      delay(1000);
-    }
-  }
-
-  mqttClient.subscribe(mqttTopic, 2);
-
   logging::println("MQTT is set up!");
 #endif
 
 #ifdef USE_SERVOS
   logging::println("configuring PWM drivers...");
-  for (uint8_t i = 0; i < driverCount; i++) {
+  for (i = 0; i < driverCount; i++) {
     drivers[i].begin();
     drivers[i].setOscillatorFrequency(27000000);
     drivers[i].setPWMFreq(50);
@@ -83,7 +74,7 @@ void setup() {
 #endif
 
 #ifdef USE_RFID
-  for (uint8_t i = 0; i < rfidReaderCount; i++) {
+  for (i = 0; i < rfidReaderCount; i++) {
     logging::print("checking for RFID reader on pca: ");
     logging::print(rfidReaders[i].pcaAddress, HEX);
     logging::print(" pin: ");
@@ -124,27 +115,13 @@ uint64_t lastServoStateChange;
 
 void loop() {
 #ifdef USE_MQTT
-  mqttClient.loop();
+  mqttReconnect();
 #endif
 
   moveServos();
   readRfidTags();
   reportAnalogOccupancy();
-
-  if (millis() - lastServoStateChange > 5000) {
-    if (millis() % 2 == 0) {
-      for (uint8_t i = 0; i < servoCount; i++) {
-        servos[i].state = ServoState::INTENT_TO_THROW;
-      }
-    } else {
-
-      for (uint8_t i = 0; i < servoCount; i++) {
-        servos[i].state = ServoState::INTENT_TO_CLOSE;
-      }
-    }
-
-    lastServoStateChange = millis();
-  }
+  reportServoStatus();
 }
 
 void pcaSelect(uint8_t pca, uint8_t pin) {
@@ -166,7 +143,7 @@ void moveServos() {
     return;
   }
 
-  for (uint8_t i = 0; i < servoCount; i++) {
+  for (i = 0; i < servoCount; i++) {
     if (servos[i].state == ServoState::INTENT_TO_CLOSE) {
       if (servos[i].currentPos > servos[i].pwmMin) {
         drivers[servos[i].driver].setPWM(servos[i].pin, 0,
@@ -200,6 +177,34 @@ void moveServos() {
 #endif
 }
 
+#ifdef USE_SERVOS
+uint64_t lastServoReport;
+#endif
+
+void reportServoStatus() {
+#ifdef USE_SERVOS
+  if (millis() - lastServoReport > 2000) {
+    char topicBuffer[15];
+    for (i = 0; i < servoCount; i++) {
+      snprintf(topicBuffer, 15, "recv/turnout/%d", i);
+      switch (servos[i].state) {
+      case ServoState::THROWN:
+        publishMessage(topicBuffer, "THROWN");
+        break;
+      case ServoState::CLOSED:
+        publishMessage(topicBuffer, "CLOSED");
+        break;
+      default:
+        publishMessage(topicBuffer, "UNKNOWN");
+        break;
+      }
+    }
+
+    lastServoReport = millis();
+  }
+#endif
+}
+
 uint64_t lastRfidRead;
 
 void readRfidTags() {
@@ -210,7 +215,7 @@ void readRfidTags() {
     uint8_t uidLength;
     String topic;
     char message[14];
-    for (uint8_t i = 0; i < rfidReaderCount; i++) {
+    for (i = 0; i < rfidReaderCount; i++) {
       pcaSelect(rfidReaders[i].pcaAddress, rfidReaders[i].pin);
       success =
           nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 25);
@@ -277,32 +282,44 @@ void reportAnalogOccupancy() {
 }
 
 void mqttMessageHandler(char *topic, byte *payload, unsigned int length) {
-  char data[length];
-  for (unsigned int i = 0; i < length; i++) {
-    data[i] = payload[i];
+  if (length == 0) {
+    return;
   }
 
   String t = String(topic);
-  String message = String(data);
-  publishMessage(topic, NULL);
 
 #ifdef USE_SERVOS
-  int ix = t.lastIndexOf('/');
-  if (ix >= 0) {
-    ix = t.substring(ix).toInt();
-    if (ix > servoCount) {
-      return;
-    }
+  i = t.lastIndexOf('/');
+  if (i > -1) {
+    i = t.substring(i + 1).toInt();
 
-    if (message == "THROWN") {
-      logging::println("setting state to INTENT_TO_THROW");
-      servos[ix].state = ServoState::INTENT_TO_THROW;
-    } else if (message == "CLOSED") {
-      logging::println("setting state to INTENT_TO_CLOSE");
-      servos[ix].state = ServoState::INTENT_TO_CLOSE;
+    if (strncmp((char *)payload, "THROWN", length)) {
+      servos[i].state = ServoState::INTENT_TO_THROW;
+    } else if (strncmp((char *)payload, "CLOSED", length)) {
+      servos[i].state = ServoState::INTENT_TO_CLOSE;
     }
   }
 #endif
 
   // TODO: handle other cases here
+}
+
+void mqttReconnect() {
+#ifdef USE_MQTT
+  while (!mqttClient.connected()) {
+    logging::println("Attempting MQTT connection...");
+    if (mqttClient.connect("model-rail-peripherals")) {
+      logging::println("connected!");
+      mqttClient.publish("hello", "connected!");
+      mqttClient.subscribe(mqttTopic);
+      break;
+    }
+
+    logging::print("mqtt connection failed, rc=");
+    logging::print(mqttClient.state());
+    logging::println(" retrying...");
+    delay(2000);
+  }
+  mqttClient.loop();
+#endif
 }
