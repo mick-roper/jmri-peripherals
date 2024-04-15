@@ -173,7 +173,9 @@ void moveServos() {
                                          servos[i].currentPos--);
       } else {
         servos[i].state = ServoState::CLOSED;
+#ifdef USE_SERVO_RELAYS
         drivers[servos[i].driver].setPin(servos[i].pin + 8, 0);
+#endif
       }
 
       continue;
@@ -185,7 +187,9 @@ void moveServos() {
                                          servos[i].currentPos++);
       } else {
         servos[i].state = ServoState::THROWN;
+#ifdef USE_SERVO_RELAYS
         drivers[servos[i].driver].setPin(servos[i].pin + 8, 4096);
+#endif
       }
 
       continue;
@@ -195,35 +199,6 @@ void moveServos() {
   lastServoMove = millis();
 #endif
 }
-
-// uint64_t lastServoReport;
-
-// void reportServoState() {
-// #ifdef USE_SERVOS
-//   if (millis() - lastServoReport < 3000) {
-//     return;
-//   }
-
-//   for (uint8_t i = 0; i < servoCount; i++) {
-//     switch(servos[i].state) {
-//       case ServoState::THROWN: {
-//         mqttClient.publish(servos[i].id.c_str(), "THROWN");
-//         break;
-//       }
-//       case ServoState::CLOSED: {
-//         mqttClient.publish(servos[i].id.c_str(), "CLOSED");
-//         break;
-//       }
-//       default: {
-//         mqttClient.publish(servos[i].id.c_str(), "UNKNOWN");
-//         break;
-//       }
-//     }
-//   }
-
-//   lastServoReport = millis();
-// #endif
-// }
 
 uint64_t lastRfidRead;
 
@@ -302,27 +277,31 @@ void reportAnalogOccupancy() {
 }
 
 void mqttMessageHandler(char *topic, byte *payload, unsigned int length) {
-  logging::print("got message on topic: ");
-  logging::println(topic);
+  String t = String(topic);
 
   char data[length];
   for (unsigned int i = 0; i < length; i++) {
     data[i] = payload[i];
   }
+
   String message = String(data);
 
 #ifdef USE_SERVOS
-  for (uint8_t i = 0; i < servoCount; i++) {
-    if (servos[i].id == topic) {
-      if (message == "THROWN") {
-        logging::println("setting state to INTENT_TO_THROW");
-        servos[i].state = ServoState::INTENT_TO_THROW;
-      } else if (message == "CLOSED") {
-        logging::println("setting state to INTENT_TO_CLOSE");
-        servos[i].state = ServoState::INTENT_TO_CLOSE;
-      }
+  int ix = t.lastIndexOf('/');
+  if (ix >= 0) {
+    ix = t.substring(ix).toInt();
+    if (ix > servoCount) {
       return;
     }
+
+    if (message == "THROWN") {
+      logging::println("setting state to INTENT_TO_THROW");
+      servos[ix].state = ServoState::INTENT_TO_THROW;
+    } else if (message == "CLOSED") {
+      logging::println("setting state to INTENT_TO_CLOSE");
+      servos[ix].state = ServoState::INTENT_TO_CLOSE;
+    }
+    return;
   }
 #endif
 

@@ -6,10 +6,11 @@
 #include <PN532_I2C.h>
 #include <Adafruit_PWMServoDriver.h>
 
-#define USE_SERIAL
+// #define USE_SERIAL
 #define USE_ETHERNET
 #define USE_MQTT
 #define USE_SERVOS
+// #define USE_SERVO_RELAYS
 // #define USE_RFID
 // #define USE_ANALOG_DETECTION
 
@@ -20,11 +21,12 @@ byte mac[] = {0xA8, 0x61, 0x0A, 0xAF, 0x07, 0x2C};
 #ifdef USE_MQTT
 const IPAddress brokerIp = IPAddress(192,168,178,23);
 const uint16_t brokerPort = 1883;
-const char mqttTopic[] = "track/turnout/#";
+const char mqttTopic[] = "do/turnout/#";
 #endif
 
 #ifdef USE_SERVOS
 enum ServoState : uint8_t {
+  UNKNOWN,
   INTENT_TO_CLOSE,
   CLOSED,
   INTENT_TO_THROW,
@@ -32,7 +34,6 @@ enum ServoState : uint8_t {
 };
 
 struct Servo {
-  String id;
   uint8_t driver;
   uint8_t pin;
   uint16_t pwmMin;
@@ -48,14 +49,14 @@ Adafruit_PWMServoDriver drivers[driverCount] = {
 
 const uint8_t servoCount = 8;
 Servo servos[servoCount] = {
-    Servo{"track/turnout/0", 0, 0, 215, 270},
-    Servo{"track/turnout/1", 0, 1, 200, 280},
-    Servo{"track/turnout/2", 0, 2, 200, 280},
-    Servo{"track/turnout/3", 0, 3, 200, 260},
-    Servo{"track/turnout/4", 0, 4, 200, 280},
-    Servo{"track/turnout/5", 0, 5, 200, 280},
-    Servo{"track/turnout/6", 0, 6, 200, 280},
-    Servo{"track/turnout/7", 0, 7, 200, 280},
+    Servo{0, 0, 215, 270},
+    Servo{0, 1, 200, 280},
+    Servo{0, 2, 200, 280},
+    Servo{0, 3, 200, 260},
+    Servo{0, 4, 200, 280},
+    Servo{0, 5, 200, 280},
+    Servo{0, 6, 200, 280},
+    Servo{0, 7, 200, 280},
 };
 #endif
 
@@ -70,6 +71,9 @@ RfidReader rfidReaders[rfidReaderCount] = {
     RfidReader{0x70, 0},
     RfidReader{0x70, 1},
 };
+#endif
+
+#ifdef USE_ANALOG_DETECTION
 #endif
 
 #endif // CONFIG_H
