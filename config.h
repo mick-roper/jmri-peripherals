@@ -6,7 +6,7 @@
 #include <PN532.h>
 #include <PN532_I2C.h>
 
-#define USE_SERIAL
+// #define USE_SERIAL
 #define USE_ETHERNET
 #define USE_MQTT
 #define USE_SERVOS
@@ -47,9 +47,9 @@ Adafruit_PWMServoDriver drivers[driverCount] = {Adafruit_PWMServoDriver(0x40)};
 
 const uint8_t servoCount = 8;
 Servo servos[servoCount] = {
-    Servo{0, 0, 220, 260}, Servo{0, 1, 220, 260}, Servo{0, 2, 220, 260},
-    Servo{0, 3, 200, 260}, Servo{0, 4, 220, 260}, Servo{0, 5, 220, 260},
-    Servo{0, 6, 220, 260}, Servo{0, 7, 220, 260},
+    Servo{0, 0, 220, 280}, Servo{0, 1, 220, 260}, Servo{0, 2, 220, 260},
+    Servo{0, 3, 200, 260}, Servo{0, 4, 200, 260}, Servo{0, 5, 200, 280},
+    Servo{0, 6, 220, 260}, Servo{0, 7, 220, 280},
 };
 #endif
 
