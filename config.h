@@ -7,6 +7,7 @@
 #include <PN532_I2C.h>
 
 // #define USE_SERIAL
+#define USE_OLED
 #define USE_ETHERNET
 #define USE_MQTT
 // #define USE_SERVOS
