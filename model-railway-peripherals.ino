@@ -31,6 +31,7 @@ PN532 nfc = PN532(pn532_i2c);
 #define ANALOG_DETECTOR_REF_VOLTAGE                                            \
   1024 // reference voltage for ADC, in millivolts
 uint8_t i, j;
+const uint8_t anaDetPinOffset = 2;
 const uint16_t samples = 256;
 uint16_t r_array[samples];
 const uint8_t pinZero = 0;
@@ -41,6 +42,8 @@ void setup() {
   logging::setup();
 
   logging::println("initialising peripherals...");
+
+  Wire.begin();
 
 #ifdef USE_ETHERNET
   Ethernet.init();
@@ -111,10 +114,8 @@ void setup() {
 #endif
 
 #ifdef USE_ANALOG_DETECTION
-  Wire.begin();
-
   for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    pinMode(i, INPUT);
+    pinMode(i+anaDetPinOffset, INPUT);
   }
 #endif
 
@@ -286,7 +287,7 @@ void reportAnalogOccupancy() {
   char buf[16];
 
   for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    sprintf(buf, "sensor/send/%d", i);
+    sprintf(buf, "recv/sensor/%d", i);
     if (detectors[i] > 0) {
       publishMessage(buf, "ACTIVE");
     } else {
@@ -344,7 +345,7 @@ void mqttReconnect() {
 void analogDetectorLoop() {
   #ifdef USE_ANALOG_DETECTION
   for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    detectors[i] = readRms(i);
+    detectors[i] = readRms(i+anaDetPinOffset);
   }
   #endif
 }

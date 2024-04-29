@@ -8,7 +8,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #endif
 
 namespace logging {
@@ -27,11 +27,12 @@ static void setup() {
   }
 
   display.clearDisplay();
-  display.setTextSize(1);
+  display.setTextSize(0);
   display.setTextColor(WHITE);
-  display.setCursor(5, 15);
+  display.setCursor(0, 0);
   display.print("ready!");
   display.display();
+  delay(2000);
 #endif
 }
 
@@ -42,8 +43,10 @@ static void println(String s) {
 
 #ifdef USE_OLED
   display.clearDisplay();
+  display.setCursor(0, 0);
   display.println(s);
   display.display();
+  delay(1000);
 #endif
 };
 
@@ -54,8 +57,10 @@ static void println(unsigned int i, int x = 10) {
 
 #ifdef USE_OLED
   display.clearDisplay();
+  display.setCursor(0, 0);
   display.println(i, x);
   display.display();
+  delay(1000);
 #endif
 }
 
@@ -66,8 +71,10 @@ static void print(String s) {
 
 #ifdef USE_OLED
   display.clearDisplay();
+  display.setCursor(0, 0);
   display.print(s);
   display.display();
+  delay(1000);
 #endif
 }
 
@@ -78,8 +85,10 @@ static void print(unsigned int i, int x = 10) {
 
 #ifdef USE_OLED
   display.clearDisplay();
+  display.setCursor(0, 0);
   display.print(i, x);
   display.display();
+  delay(1000);
 #endif
 }
 } // namespace logging
