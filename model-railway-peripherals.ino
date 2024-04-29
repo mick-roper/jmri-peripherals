@@ -1,5 +1,4 @@
 #include "./config.h"
-#include "./logging.h"
 
 #include <Adafruit_PWMServoDriver.h>
 #include <Ethernet.h>
@@ -9,7 +8,7 @@
 #include <SPI.h>
 #include <Wire.h>
 
-#include "./EmonLib.h"
+#include "./logging.h"
 
 #ifdef USE_ETHERNET
 EthernetClient ethernet;
@@ -24,9 +23,19 @@ PN532_I2C pn532_i2c(Wire);
 PN532 nfc = PN532(pn532_i2c);
 #endif
 
-EnergyMonitor emon1;
-
-int i;
+#ifdef USE_ANALOG_DETECTION
+#define ANALOG_DETECTOR_COUNT 18
+#define ANALOG_DETECTOR_CT_RATIO 1000 // current transformer ratio 1000/1 = 1000
+#define ANALOG_DETECTOR_SHUNT_RES                                              \
+  40 // shunt resistor connected to CT secondary = 40 Ohm
+#define ANALOG_DETECTOR_REF_VOLTAGE                                            \
+  1024 // reference voltage for ADC, in millivolts
+uint8_t i, j;
+const uint16_t samples = 256;
+uint16_t r_array[samples];
+const uint8_t pinZero = 0;
+float detectors[ANALOG_DETECTOR_COUNT];
+#endif
 
 void setup() {
   logging::setup();
@@ -104,8 +113,9 @@ void setup() {
 #ifdef USE_ANALOG_DETECTION
   Wire.begin();
 
-  // CT readers
-  emon1.current(A0, 111.1);
+  for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
+    pinMode(i, INPUT);
+  }
 #endif
 
   logging::println("--- peripherals initialised! ---\n\n");
@@ -116,6 +126,10 @@ uint64_t lastServoStateChange;
 void loop() {
 #ifdef USE_MQTT
   mqttReconnect();
+#endif
+
+#ifdef USE_ANALOG_DETECTION
+  analogDetectorLoop();
 #endif
 
   moveServos();
@@ -269,15 +283,18 @@ void reportAnalogOccupancy() {
     return;
   }
 
-  lastAnalogRead = millis();
-  double irms = emon1.calcIrms(1000);
+  char buf[16];
 
-  logging::print("analog detection -- DETECTOR 0: ");
-  if (irms * 230.0 > 15) {
-    logging::println("OCCUPIED");
-  } else {
-    logging::println("UNOCCUPIED");
+  for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
+    sprintf(buf, "sensor/send/%d", i);
+    if (detectors[i] > 0) {
+      publishMessage(buf, "ACTIVE");
+    } else {
+      publishMessage(buf, "INACTIVE");
+    }
   }
+
+  lastAnalogRead = millis();
 #endif
 }
 
@@ -322,4 +339,55 @@ void mqttReconnect() {
   }
   mqttClient.loop();
 #endif
+}
+
+void analogDetectorLoop() {
+  #ifdef USE_ANALOG_DETECTION
+  for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
+    detectors[i] = readRms(i);
+  }
+  #endif
+}
+
+float readRms(uint8_t pin) {
+  float dc_offset = 0;
+  float rms = 0;
+
+  for (i = 0; i < samples; i++) {
+    r_array[i] = 0;
+  }
+
+  // read voltage at INPUT_CHANNEL 'n' times and save data to 'r_array'
+  for (i = 0; i < samples; i++) {
+    // adding another 2 bits using oversampling technique
+    for (j = 0; j < 16; j++) {
+      r_array[i] += digitalRead(pin);
+    }
+    r_array[i] /= 4;
+  }
+
+  // calculate signal average value (DC offset)
+  for (i = 0; i < samples; i++) {
+    dc_offset += r_array[i];
+  }
+
+  dc_offset = dc_offset / samples;
+
+  // calculate AC signal RMS value
+  for (i = 0; i < samples; i++) {
+    if (abs(r_array[i] - dc_offset) > 3)
+      rms += sq(r_array[i] - dc_offset);
+  }
+
+  rms = rms / samples;
+
+  // calculate Arduino analog channel input RMS voltage in millivolts
+  rms = sqrt(rms) * ANALOG_DETECTOR_REF_VOLTAGE /
+        4096; // 4096 is max digital value for 12-bit number (oversampled ADC)
+
+  // calculate current passing through the shunt resistor by applying Ohm's Law
+  // (in milli Amps)
+  rms = rms / ANALOG_DETECTOR_SHUNT_RES;
+  // now we can get current passing through the CT in milli Amps
+  return rms * ANALOG_DETECTOR_CT_RATIO;
 }

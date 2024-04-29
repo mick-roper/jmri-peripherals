@@ -9,10 +9,10 @@
 // #define USE_SERIAL
 #define USE_ETHERNET
 #define USE_MQTT
-#define USE_SERVOS
-#define USE_SERVO_RELAYS
+// #define USE_SERVOS
+// #define USE_SERVO_RELAYS
 // #define USE_RFID
-// #define USE_ANALOG_DETECTION
+#define USE_ANALOG_DETECTION
 
 #ifdef USE_ETHERNET
 byte mac[] = {0xA8, 0x61, 0x0A, 0xAF, 0x07, 0x2C};
@@ -64,9 +64,6 @@ RfidReader rfidReaders[rfidReaderCount] = {
     RfidReader{0x70, 0},
     RfidReader{0x70, 1},
 };
-#endif
-
-#ifdef USE_ANALOG_DETECTION
 #endif
 
 #endif // CONFIG_H
