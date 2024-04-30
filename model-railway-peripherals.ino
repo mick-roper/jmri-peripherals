@@ -26,7 +26,7 @@ PN532 nfc = PN532(pn532_i2c);
 #ifdef USE_ANALOG_DETECTION
 #define ANALOG_DETECTOR_COUNT 18
 #define ANALOG_DETECTOR_CT_RATIO 1000
-#define ANALOG_DETECTOR_SHUNT_RES 20
+#define ANALOG_DETECTOR_SHUNT_RES 40
 #define ANALOG_DETECTOR_REF_VOLTAGE 1024
 uint16_t i;
 uint8_t j;
@@ -112,6 +112,12 @@ void setup() {
   }
 #endif
 
+#ifdef USE_ANALOG_DETECTION
+  for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
+    pinMode(i + analogDetectionPinOffset, INPUT_PULLUP);
+  }
+#endif
+
   logging::println("--- peripherals initialised! ---\n\n");
 }
 
@@ -133,13 +139,17 @@ void loop() {
   reportServoStatus();
 
   if (millis() - lastOledPrint > 1000) {
-    char buf[20];
+    char buf[25];
 
-    sprintf(buf, "detector %d: %dmA", i,
-            detectors[i + analogDetectionPinOffset]);
+    if (detectors[lastPrintedDetector] > 0) {
+      sprintf(buf, "detector %d: OCCUPIED", lastPrintedDetector);
+    } else {
+      sprintf(buf, "detector %d: UNOCCUPIED", lastPrintedDetector);
+    }
+
     logging::println(buf);
 
-    if (lastPrintedDetector >= ANALOG_DETECTOR_COUNT) {
+    if (lastPrintedDetector >= ANALOG_DETECTOR_COUNT - 1) {
       lastPrintedDetector = 0;
     } else {
       lastPrintedDetector++;
@@ -352,7 +362,8 @@ void mqttReconnect() {
 void analogDetectorLoop() {
 #ifdef USE_ANALOG_DETECTION
   for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    detectors[i] = readRms(i + analogDetectionPinOffset);
+    detectors[i] = digitalRead(i + analogDetectionPinOffset);
+    // detectors[i] = readRms(i + analogDetectionPinOffset);
   }
 #endif
 }
