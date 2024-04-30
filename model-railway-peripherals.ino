@@ -25,13 +25,12 @@ PN532 nfc = PN532(pn532_i2c);
 
 #ifdef USE_ANALOG_DETECTION
 #define ANALOG_DETECTOR_COUNT 18
-#define ANALOG_DETECTOR_CT_RATIO 1000 // current transformer ratio 1000/1 = 1000
-#define ANALOG_DETECTOR_SHUNT_RES                                              \
-  40 // shunt resistor connected to CT secondary = 40 Ohm
-#define ANALOG_DETECTOR_REF_VOLTAGE                                            \
-  1024 // reference voltage for ADC, in millivolts
-uint8_t i, j;
-const uint8_t anaDetPinOffset = 2;
+#define ANALOG_DETECTOR_CT_RATIO 1000
+#define ANALOG_DETECTOR_SHUNT_RES 20
+#define ANALOG_DETECTOR_REF_VOLTAGE 1024
+uint16_t i;
+uint8_t j;
+const uint8_t analogDetectionPinOffset = 2;
 const uint16_t samples = 256;
 uint16_t r_array[samples];
 const uint8_t pinZero = 0;
@@ -71,7 +70,7 @@ void setup() {
   mqttClient.setServer(broker, brokerPort);
   mqttClient.setCallback(mqttMessageHandler);
 
-  logging::println("MQTT is set up!");
+  logging::println("MQTT client is configured!");
 #endif
 
 #ifdef USE_SERVOS
@@ -113,30 +112,41 @@ void setup() {
   }
 #endif
 
-#ifdef USE_ANALOG_DETECTION
-  for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    pinMode(i+anaDetPinOffset, INPUT);
-  }
-#endif
-
   logging::println("--- peripherals initialised! ---\n\n");
 }
 
-uint64_t lastServoStateChange;
+uint64_t lastServoStateChange, lastOledPrint;
+uint8_t lastPrintedDetector;
 
 void loop() {
 #ifdef USE_MQTT
   mqttReconnect();
 #endif
 
+  moveServos();
 #ifdef USE_ANALOG_DETECTION
   analogDetectorLoop();
 #endif
 
-  moveServos();
   readRfidTags();
   reportAnalogOccupancy();
   reportServoStatus();
+
+  if (millis() - lastOledPrint > 1000) {
+    char buf[20];
+
+    sprintf(buf, "detector %d: %dmA", i,
+            detectors[i + analogDetectionPinOffset]);
+    logging::println(buf);
+
+    if (lastPrintedDetector >= ANALOG_DETECTOR_COUNT) {
+      lastPrintedDetector = 0;
+    } else {
+      lastPrintedDetector++;
+    }
+
+    lastOledPrint = millis();
+  }
 }
 
 void pcaSelect(uint8_t pca, uint8_t pin) {
@@ -280,22 +290,20 @@ uint64_t lastAnalogRead;
 
 void reportAnalogOccupancy() {
 #ifdef USE_ANALOG_DETECTION
-  if (millis() - lastAnalogRead < 1000) {
-    return;
-  }
+  if (millis() - lastAnalogRead > 1000) {
+    char buf[16];
 
-  char buf[16];
-
-  for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    sprintf(buf, "recv/sensor/%d", i);
-    if (detectors[i] > 0) {
-      publishMessage(buf, "ACTIVE");
-    } else {
-      publishMessage(buf, "INACTIVE");
+    for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
+      sprintf(buf, "recv/sensor/%d", i);
+      if (detectors[i] > 0) {
+        publishMessage(buf, "ACTIVE");
+      } else {
+        publishMessage(buf, "INACTIVE");
+      }
     }
-  }
 
-  lastAnalogRead = millis();
+    lastAnalogRead = millis();
+  }
 #endif
 }
 
@@ -328,7 +336,6 @@ void mqttReconnect() {
     logging::println("Attempting MQTT connection...");
     if (mqttClient.connect("model-rail-peripherals")) {
       logging::println("connected!");
-      mqttClient.publish("hello", "connected!");
       mqttClient.subscribe(mqttTopic);
       break;
     }
@@ -343,16 +350,19 @@ void mqttReconnect() {
 }
 
 void analogDetectorLoop() {
-  #ifdef USE_ANALOG_DETECTION
+#ifdef USE_ANALOG_DETECTION
   for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    detectors[i] = readRms(i+anaDetPinOffset);
+    detectors[i] = readRms(i + analogDetectionPinOffset);
   }
-  #endif
+#endif
 }
 
+float dc_offset = 0;
+float rms = 0;
+
 float readRms(uint8_t pin) {
-  float dc_offset = 0;
-  float rms = 0;
+  dc_offset = 0;
+  rms = 0;
 
   for (i = 0; i < samples; i++) {
     r_array[i] = 0;

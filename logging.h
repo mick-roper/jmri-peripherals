@@ -32,7 +32,6 @@ static void setup() {
   display.setCursor(0, 0);
   display.print("ready!");
   display.display();
-  delay(2000);
 #endif
 }
 
@@ -46,7 +45,6 @@ static void println(String s) {
   display.setCursor(0, 0);
   display.println(s);
   display.display();
-  delay(1000);
 #endif
 };
 
@@ -60,7 +58,6 @@ static void println(unsigned int i, int x = 10) {
   display.setCursor(0, 0);
   display.println(i, x);
   display.display();
-  delay(1000);
 #endif
 }
 
@@ -74,7 +71,6 @@ static void print(String s) {
   display.setCursor(0, 0);
   display.print(s);
   display.display();
-  delay(1000);
 #endif
 }
 
@@ -88,7 +84,6 @@ static void print(unsigned int i, int x = 10) {
   display.setCursor(0, 0);
   display.print(i, x);
   display.display();
-  delay(1000);
 #endif
 }
 } // namespace logging
