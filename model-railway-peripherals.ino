@@ -10,6 +10,10 @@
 
 #include "./logging.h"
 
+#ifdef USE_ANALOG_DETECTION
+#include "./analog-detection.h"
+#endif
+
 #ifdef USE_ETHERNET
 EthernetClient ethernet;
 #endif
@@ -21,20 +25,6 @@ PubSubClient mqttClient;
 #ifdef USE_RFID
 PN532_I2C pn532_i2c(Wire);
 PN532 nfc = PN532(pn532_i2c);
-#endif
-
-#ifdef USE_ANALOG_DETECTION
-#define ANALOG_DETECTOR_COUNT 18
-#define ANALOG_DETECTOR_CT_RATIO 1000
-#define ANALOG_DETECTOR_SHUNT_RES 40
-#define ANALOG_DETECTOR_REF_VOLTAGE 1024
-uint16_t i;
-uint8_t j;
-const uint8_t analogDetectionPinOffset = 2;
-const uint16_t samples = 256;
-uint16_t r_array[samples];
-const uint8_t pinZero = 0;
-char detectors[ANALOG_DETECTOR_COUNT];
 #endif
 
 void setup() {
@@ -113,9 +103,7 @@ void setup() {
 #endif
 
 #ifdef USE_ANALOG_DETECTION
-  for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    pinMode(i + analogDetectionPinOffset, INPUT_PULLUP);
-  }
+  analog_detection::setup();
 #endif
 
   logging::println("--- peripherals initialised! ---\n\n");
@@ -124,14 +112,17 @@ void setup() {
 uint64_t lastServoStateChange, lastOledPrint;
 uint8_t lastPrintedDetector;
 
+char buf[50];
+
 void loop() {
 #ifdef USE_MQTT
   mqttReconnect();
 #endif
 
   moveServos();
+
 #ifdef USE_ANALOG_DETECTION
-  analogDetectorLoop();
+  analog_detection::loop();
 #endif
 
   readRfidTags();
@@ -139,9 +130,8 @@ void loop() {
   reportServoStatus();
 
   if (millis() - lastOledPrint > 1000) {
-    char buf[25];
-
-    if (detectors[lastPrintedDetector] > 0) {
+#ifdef USE_ANALOG_DETECTION
+    if (analog_detection::values[lastPrintedDetector] > 0) {
       sprintf(buf, "detector %d: OCCUPIED", lastPrintedDetector);
     } else {
       sprintf(buf, "detector %d: UNOCCUPIED", lastPrintedDetector);
@@ -149,11 +139,12 @@ void loop() {
 
     logging::println(buf);
 
-    if (lastPrintedDetector >= ANALOG_DETECTOR_COUNT - 1) {
+    if (lastPrintedDetector >= (PINS_PER_EXP * EXPANDERS) - 1) {
       lastPrintedDetector = 0;
     } else {
       lastPrintedDetector++;
     }
+#endif
 
     lastOledPrint = millis();
   }
@@ -303,9 +294,9 @@ void reportAnalogOccupancy() {
   if (millis() - lastAnalogRead > 1000) {
     char buf[16];
 
-    for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
+    for (uint8_t i = 0; i < EXPANDERS * PINS_PER_EXP; i++) {
       sprintf(buf, "recv/sensor/%d", i);
-      if (detectors[i] > 0) {
+      if (analog_detection::values[i] > 0) {
         publishMessage(buf, "ACTIVE");
       } else {
         publishMessage(buf, "INACTIVE");
@@ -359,59 +350,4 @@ void mqttReconnect() {
   }
   mqttClient.loop();
 #endif
-}
-
-void analogDetectorLoop() {
-#ifdef USE_ANALOG_DETECTION
-  for (i = 0; i < ANALOG_DETECTOR_COUNT; i++) {
-    detectors[i] = digitalRead(i + analogDetectionPinOffset);
-    // detectors[i] = readRms(i + analogDetectionPinOffset);
-  }
-#endif
-}
-
-float dc_offset = 0;
-float rms = 0;
-
-float readRms(uint8_t pin) {
-  dc_offset = 0;
-  rms = 0;
-
-  for (i = 0; i < samples; i++) {
-    r_array[i] = 0;
-  }
-
-  // read voltage at INPUT_CHANNEL 'n' times and save data to 'r_array'
-  for (i = 0; i < samples; i++) {
-    // adding another 2 bits using oversampling technique
-    for (j = 0; j < 16; j++) {
-      r_array[i] += digitalRead(pin);
-    }
-    r_array[i] /= 4;
-  }
-
-  // calculate signal average value (DC offset)
-  for (i = 0; i < samples; i++) {
-    dc_offset += r_array[i];
-  }
-
-  dc_offset = dc_offset / samples;
-
-  // calculate AC signal RMS value
-  for (i = 0; i < samples; i++) {
-    if (abs(r_array[i] - dc_offset) > 3)
-      rms += sq(r_array[i] - dc_offset);
-  }
-
-  rms = rms / samples;
-
-  // calculate Arduino analog channel input RMS voltage in millivolts
-  rms = sqrt(rms) * ANALOG_DETECTOR_REF_VOLTAGE /
-        4096; // 4096 is max digital value for 12-bit number (oversampled ADC)
-
-  // calculate current passing through the shunt resistor by applying Ohm's Law
-  // (in milli Amps)
-  rms = rms / ANALOG_DETECTOR_SHUNT_RES;
-  // now we can get current passing through the CT in milli Amps
-  return rms * ANALOG_DETECTOR_CT_RATIO;
 }

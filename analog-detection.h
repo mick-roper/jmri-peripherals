@@ -14,12 +14,52 @@
 #define S1_PIN 5
 #define S2_PIN 6
 #define S3_PIN 7
+#define SAMPLES 256
 
-namespace analaog_detection {
+namespace analog_detection {
 float values[PINS_PER_EXP * EXPANDERS];
-uint8_t expander;
-const uint16_t samples = 256;
-uint16_t r_array[samples];
+uint16_t r_array[SAMPLES];
+
+float read_rms() {
+  float dc_offset, rms = 0;
+  uint16_t i;
+  uint8_t j;
+
+  // read voltage at INPUT_CHANNEL 'n' times and save data to 'r_array'
+  for (i = 0; i < SAMPLES; i++) {
+    r_array[i] = 0;
+    // adding another 2 bits using oversampling technique
+    for (j = 0; j < 16; j++) {
+      r_array[i] += analogRead(READER_PIN);
+    }
+    r_array[i] /= 4;
+  }
+
+  // calculate signal average value (DC offset)
+  for (i = 0; i < SAMPLES; i++) {
+    dc_offset += r_array[i];
+  }
+
+  dc_offset = dc_offset / SAMPLES;
+
+  // calculate AC signal RMS value
+  for (i = 0; i < SAMPLES; i++) {
+    if (abs(r_array[i] - dc_offset) > 3)
+      rms += sq(r_array[i] - dc_offset);
+  }
+
+  rms = rms / SAMPLES;
+
+  // calculate Arduino analog channel input RMS voltage in millivolts
+  // 4096 is max digital value for 12-bit number (oversampled ADC)
+  rms = sqrt(rms) * ANALOG_DETECTOR_REF_VOLTAGE / 4096;
+
+  // calculate current passing through the shunt resistor by applying Ohm's Law
+  // (in milli Amps)
+  rms = rms / ANALOG_DETECTOR_SHUNT_RES;
+  // now we can get current passing through the CT in milli Amps
+  return rms * ANALOG_DETECTOR_CT_RATIO;
+}
 
 void setup() {
   pinMode(S0_PIN, OUTPUT);
@@ -28,12 +68,14 @@ void setup() {
   pinMode(S3_PIN, OUTPUT);
 
   for (uint8_t exp = 0; exp < EXPANDERS; exp++) {
+    pinMode(exp + ENABLE_PIN_0, OUTPUT);
     digitalWrite(exp + ENABLE_PIN_0, HIGH);
   }
 }
 
 void loop() {
   for (uint8_t exp = 0; exp < EXPANDERS; exp++) {
+    // enable the expander
     digitalWrite(exp + ENABLE_PIN_0, LOW);
 
     for (uint8_t pin = 0; pin < PINS_PER_EXP; pin++) {
@@ -152,56 +194,13 @@ void loop() {
       }
       }
 
-      values[(exp * pin) + pin] = read_rms();
+      values[(exp * pin) + pin] = analog_detection::read_rms();
     }
 
+    // disable the expander
     digitalWrite(exp + ENABLE_PIN_0, HIGH);
   }
 }
-
-float read_rms() {
-  uint16_t i;
-  uint8_t j;
-  float dc_offset, rms = 0;
-
-  for (uint8_t i = 0; i < samples; i++) {
-    r_array[i] = 0;
-  }
-
-  // read voltage at INPUT_CHANNEL 'n' times and save data to 'r_array'
-  for (i = 0; i < samples; i++) {
-    // adding another 2 bits using oversampling technique
-    for (j = 0; j < 16; j++) {
-      r_array[i] += analogRead(READER_PIN);
-    }
-    r_array[i] /= 4;
-  }
-
-  // calculate signal average value (DC offset)
-  for (i = 0; i < samples; i++) {
-    dc_offset += r_array[i];
-  }
-
-  dc_offset = dc_offset / samples;
-
-  // calculate AC signal RMS value
-  for (i = 0; i < samples; i++) {
-    if (abs(r_array[i] - dc_offset) > 3)
-      rms += sq(r_array[i] - dc_offset);
-  }
-
-  rms = rms / samples;
-
-  // calculate Arduino analog channel input RMS voltage in millivolts
-  rms = sqrt(rms) * ANALOG_DETECTOR_REF_VOLTAGE /
-        4096; // 4096 is max digital value for 12-bit number (oversampled ADC)
-
-  // calculate current passing through the shunt resistor by applying Ohm's Law
-  // (in milli Amps)
-  rms = rms / ANALOG_DETECTOR_SHUNT_RES;
-  // now we can get current passing through the CT in milli Amps
-  return rms * ANALOG_DETECTOR_CT_RATIO;
-}
-} // namespace analaog_detection
+} // namespace analog_detection
 
 #endif
