@@ -9,7 +9,7 @@
 // #define USE_SERIAL
 #define USE_OLED
 #define USE_ETHERNET
-#define USE_MQTT
+// #define USE_MQTT
 // #define USE_SERVOS
 // #define USE_SERVO_RELAYS
 // #define USE_RFID

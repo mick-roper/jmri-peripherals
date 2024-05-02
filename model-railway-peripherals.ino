@@ -34,7 +34,7 @@ const uint8_t analogDetectionPinOffset = 2;
 const uint16_t samples = 256;
 uint16_t r_array[samples];
 const uint8_t pinZero = 0;
-float detectors[ANALOG_DETECTOR_COUNT];
+char detectors[ANALOG_DETECTOR_COUNT];
 #endif
 
 void setup() {
@@ -350,8 +350,10 @@ void mqttReconnect() {
       break;
     }
 
-    logging::print("mqtt connection failed, rc=");
-    logging::print(mqttClient.state());
+    char buf[50];
+    sprintf(buf, "mqtt connection failed, rc=%d", mqttClient.state());
+    logging::println(buf);
+    delay(2000);
     logging::println(" retrying...");
     delay(2000);
   }
