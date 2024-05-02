@@ -34,6 +34,10 @@ void setup() {
 
   Wire.begin();
 
+#ifdef USE_ANALOG_DETECTION
+  analog_detection::setup();
+#endif
+
 #ifdef USE_ETHERNET
   Ethernet.init();
   Ethernet.begin(mac);
@@ -100,10 +104,6 @@ void setup() {
 
     nfc.SAMConfig();
   }
-#endif
-
-#ifdef USE_ANALOG_DETECTION
-  analog_detection::setup();
 #endif
 
   logging::println("--- peripherals initialised! ---\n\n");
