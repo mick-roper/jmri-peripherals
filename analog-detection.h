@@ -8,8 +8,7 @@
 #define PINS_PER_EXP 16
 #define EXPANDERS 2
 
-#define ENABLE_PIN_0 10
-#define READER_PIN A0
+#define EXPANDER_PIN_0 A0
 #define S0_PIN 4
 #define S1_PIN 5
 #define S2_PIN 6
@@ -20,7 +19,7 @@ namespace analog_detection {
 float values[PINS_PER_EXP * EXPANDERS];
 uint16_t r_array[SAMPLES];
 
-float read_rms() {
+float read_rms(uint8_t pin) {
   float dc_offset, rms = 0;
   uint16_t i;
   uint8_t j;
@@ -30,7 +29,7 @@ float read_rms() {
     r_array[i] = 0;
     // adding another 2 bits using oversampling technique
     for (j = 0; j < 16; j++) {
-      r_array[i] += analogRead(READER_PIN);
+      r_array[i] += analogRead(pin);
     }
     r_array[i] /= 4;
   }
@@ -66,139 +65,128 @@ void setup() {
   pinMode(S1_PIN, OUTPUT);
   pinMode(S2_PIN, OUTPUT);
   pinMode(S3_PIN, OUTPUT);
-
-  for (uint8_t exp = 0; exp < EXPANDERS; exp++) {
-    pinMode(exp + ENABLE_PIN_0, OUTPUT);
-    digitalWrite(exp + ENABLE_PIN_0, HIGH);
-  }
 }
 
 void loop() {
-  for (uint8_t exp = 0; exp < EXPANDERS; exp++) {
-    // enable the expander
-    digitalWrite(exp + ENABLE_PIN_0, LOW);
-
-    for (uint8_t pin = 0; pin < PINS_PER_EXP; pin++) {
-      switch (pin) {
-      case 0: {
-        digitalWrite(S0_PIN, LOW); // 1
-        digitalWrite(S1_PIN, LOW); // 2
-        digitalWrite(S2_PIN, LOW); // 4
-        digitalWrite(S3_PIN, LOW); // 8
-        break;
-      }
-      case 1: {
-        digitalWrite(S0_PIN, HIGH);
-        digitalWrite(S1_PIN, LOW);
-        digitalWrite(S2_PIN, LOW);
-        digitalWrite(S3_PIN, LOW);
-        break;
-      }
-      case 2: {
-        digitalWrite(S0_PIN, LOW);
-        digitalWrite(S1_PIN, HIGH);
-        digitalWrite(S2_PIN, LOW);
-        digitalWrite(S3_PIN, LOW);
-        break;
-      }
-      case 3: {
-        digitalWrite(S0_PIN, HIGH);
-        digitalWrite(S1_PIN, HIGH);
-        digitalWrite(S2_PIN, LOW);
-        digitalWrite(S3_PIN, LOW);
-        break;
-      }
-      case 4: {
-        digitalWrite(S0_PIN, LOW);
-        digitalWrite(S1_PIN, LOW);
-        digitalWrite(S2_PIN, HIGH);
-        digitalWrite(S3_PIN, LOW);
-        break;
-      }
-      case 5: {
-        digitalWrite(S0_PIN, HIGH);
-        digitalWrite(S1_PIN, LOW);
-        digitalWrite(S2_PIN, HIGH);
-        digitalWrite(S3_PIN, LOW);
-        break;
-      }
-      case 6: {
-        digitalWrite(S0_PIN, LOW);
-        digitalWrite(S1_PIN, HIGH);
-        digitalWrite(S2_PIN, HIGH);
-        digitalWrite(S3_PIN, LOW);
-        break;
-      }
-      case 7: {
-        digitalWrite(S0_PIN, HIGH);
-        digitalWrite(S1_PIN, HIGH);
-        digitalWrite(S2_PIN, HIGH);
-        digitalWrite(S3_PIN, LOW);
-        break;
-      }
-      case 8: {
-        digitalWrite(S0_PIN, LOW);
-        digitalWrite(S1_PIN, LOW);
-        digitalWrite(S2_PIN, LOW);
-        digitalWrite(S3_PIN, HIGH);
-        break;
-      }
-      case 9: {
-        digitalWrite(S0_PIN, HIGH);
-        digitalWrite(S1_PIN, LOW);
-        digitalWrite(S2_PIN, LOW);
-        digitalWrite(S3_PIN, HIGH);
-        break;
-      }
-      case 10: {
-        digitalWrite(S0_PIN, LOW);
-        digitalWrite(S1_PIN, HIGH);
-        digitalWrite(S2_PIN, LOW);
-        digitalWrite(S3_PIN, HIGH);
-        break;
-      }
-      case 11: {
-        digitalWrite(S0_PIN, HIGH);
-        digitalWrite(S1_PIN, HIGH);
-        digitalWrite(S2_PIN, LOW);
-        digitalWrite(S3_PIN, HIGH);
-        break;
-      }
-      case 12: {
-        digitalWrite(S0_PIN, LOW);
-        digitalWrite(S1_PIN, LOW);
-        digitalWrite(S2_PIN, HIGH);
-        digitalWrite(S3_PIN, HIGH);
-        break;
-      }
-      case 13: {
-        digitalWrite(S0_PIN, HIGH);
-        digitalWrite(S1_PIN, LOW);
-        digitalWrite(S2_PIN, HIGH);
-        digitalWrite(S3_PIN, HIGH);
-        break;
-      }
-      case 14: {
-        digitalWrite(S0_PIN, LOW);
-        digitalWrite(S1_PIN, HIGH);
-        digitalWrite(S2_PIN, HIGH);
-        digitalWrite(S3_PIN, HIGH);
-        break;
-      }
-      case 15: {
-        digitalWrite(S0_PIN, HIGH);
-        digitalWrite(S1_PIN, HIGH);
-        digitalWrite(S2_PIN, HIGH);
-        digitalWrite(S3_PIN, HIGH);
-        break;
-      }
-      }
-
-      values[(exp * pin) + pin] = analog_detection::read_rms();
+  for (uint8_t pin = 0; pin < PINS_PER_EXP; pin++) {
+    switch (pin) {
+    case 0: {
+      digitalWrite(S0_PIN, LOW); // 1
+      digitalWrite(S1_PIN, LOW); // 2
+      digitalWrite(S2_PIN, LOW); // 4
+      digitalWrite(S3_PIN, LOW); // 8
+      break;
     }
+    case 1: {
+      digitalWrite(S0_PIN, HIGH);
+      digitalWrite(S1_PIN, LOW);
+      digitalWrite(S2_PIN, LOW);
+      digitalWrite(S3_PIN, LOW);
+      break;
+    }
+    case 2: {
+      digitalWrite(S0_PIN, LOW);
+      digitalWrite(S1_PIN, HIGH);
+      digitalWrite(S2_PIN, LOW);
+      digitalWrite(S3_PIN, LOW);
+      break;
+    }
+    case 3: {
+      digitalWrite(S0_PIN, HIGH);
+      digitalWrite(S1_PIN, HIGH);
+      digitalWrite(S2_PIN, LOW);
+      digitalWrite(S3_PIN, LOW);
+      break;
+    }
+    case 4: {
+      digitalWrite(S0_PIN, LOW);
+      digitalWrite(S1_PIN, LOW);
+      digitalWrite(S2_PIN, HIGH);
+      digitalWrite(S3_PIN, LOW);
+      break;
+    }
+    case 5: {
+      digitalWrite(S0_PIN, HIGH);
+      digitalWrite(S1_PIN, LOW);
+      digitalWrite(S2_PIN, HIGH);
+      digitalWrite(S3_PIN, LOW);
+      break;
+    }
+    case 6: {
+      digitalWrite(S0_PIN, LOW);
+      digitalWrite(S1_PIN, HIGH);
+      digitalWrite(S2_PIN, HIGH);
+      digitalWrite(S3_PIN, LOW);
+      break;
+    }
+    case 7: {
+      digitalWrite(S0_PIN, HIGH);
+      digitalWrite(S1_PIN, HIGH);
+      digitalWrite(S2_PIN, HIGH);
+      digitalWrite(S3_PIN, LOW);
+      break;
+    }
+    case 8: {
+      digitalWrite(S0_PIN, LOW);
+      digitalWrite(S1_PIN, LOW);
+      digitalWrite(S2_PIN, LOW);
+      digitalWrite(S3_PIN, HIGH);
+      break;
+    }
+    case 9: {
+      digitalWrite(S0_PIN, HIGH);
+      digitalWrite(S1_PIN, LOW);
+      digitalWrite(S2_PIN, LOW);
+      digitalWrite(S3_PIN, HIGH);
+      break;
+    }
+    case 10: {
+      digitalWrite(S0_PIN, LOW);
+      digitalWrite(S1_PIN, HIGH);
+      digitalWrite(S2_PIN, LOW);
+      digitalWrite(S3_PIN, HIGH);
+      break;
+    }
+    case 11: {
+      digitalWrite(S0_PIN, HIGH);
+      digitalWrite(S1_PIN, HIGH);
+      digitalWrite(S2_PIN, LOW);
+      digitalWrite(S3_PIN, HIGH);
+      break;
+    }
+    case 12: {
+      digitalWrite(S0_PIN, LOW);
+      digitalWrite(S1_PIN, LOW);
+      digitalWrite(S2_PIN, HIGH);
+      digitalWrite(S3_PIN, HIGH);
+      break;
+    }
+    case 13: {
+      digitalWrite(S0_PIN, HIGH);
+      digitalWrite(S1_PIN, LOW);
+      digitalWrite(S2_PIN, HIGH);
+      digitalWrite(S3_PIN, HIGH);
+      break;
+    }
+    case 14: {
+      digitalWrite(S0_PIN, LOW);
+      digitalWrite(S1_PIN, HIGH);
+      digitalWrite(S2_PIN, HIGH);
+      digitalWrite(S3_PIN, HIGH);
+      break;
+    }
+    case 15: {
+      digitalWrite(S0_PIN, HIGH);
+      digitalWrite(S1_PIN, HIGH);
+      digitalWrite(S2_PIN, HIGH);
+      digitalWrite(S3_PIN, HIGH);
+      break;
+    }
+    } // switch
 
-    // disable the expander
-    digitalWrite(exp + ENABLE_PIN_0, HIGH);
+    for (uint8_t exp = 0; exp < EXPANDERS; exp++) {
+      values[(exp * pin) + pin] = analog_detection::read_rms(EXPANDER_PIN_0 + exp);
+    }
   }
 }
 } // namespace analog_detection
