@@ -25,11 +25,11 @@ EthernetClient ethClient;
 PubSubClient client(ethClient);
 
 // Define PCA9685 instances with their unique I2C addresses
-const int NUM_PWM_BOARDS = 3;  // Number of PCA9685 boards
+const int NUM_PWM_BOARDS = 1;  // Number of PCA9685 boards
 Adafruit_PWMServoDriver pwms[NUM_PWM_BOARDS] = {
     Adafruit_PWMServoDriver(0x40),  // First PCA9685, I2C address 0x40
-    Adafruit_PWMServoDriver(0x41),  // Second PCA9685, I2C address 0x41
-    Adafruit_PWMServoDriver(0x42)   // Third PCA9685, I2C address 0x42
+    // Adafruit_PWMServoDriver(0x41),  // Second PCA9685, I2C address 0x41
+    // Adafruit_PWMServoDriver(0x42)   // Third PCA9685, I2C address 0x42
 };
 
 // Turnout class definition
@@ -79,11 +79,16 @@ public:
 };
 
 // Array of turnouts
-const int NUM_TURNOUTS = 3;  // Number of turnouts
+const int NUM_TURNOUTS = 8;  // Number of turnouts
 Turnout turnouts[NUM_TURNOUTS] = {
-    Turnout("turnout1", 0, 0, 90, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("turnout2", 0, 1, 90, 0),  // ID: "turnout2", Board 0 (0x40), Servo 1
-    Turnout("turnout3", 1, 0, 90, 0)   // ID: "turnout3", Board 1 (0x41), Servo 0
+    Turnout("up_fdl_arr_1", 0, 0, 90, 0),
+    Turnout("up_fdl_arr_2", 0, 1, 90, 0),
+    Turnout("up_fdl_dep_1", 0, 2, 90, 0),
+    Turnout("up_fdl_dep_2", 0, 3, 90, 0),
+    Turnout("dn_fdl_arr_1", 0, 4, 90, 0),
+    Turnout("dn_fdl_arr_2", 0, 5, 90, 0),
+    Turnout("dn_fdl_dep_1", 0, 6, 90, 0),
+    Turnout("dn_fdl_dep_2", 0, 7, 90, 0),
 };
 
 void setupOLED() {
