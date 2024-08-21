@@ -27,9 +27,7 @@ PubSubClient client(ethClient);
 // Define PCA9685 instances with their unique I2C addresses
 const int NUM_PWM_BOARDS = 1;  // Number of PCA9685 boards
 Adafruit_PWMServoDriver pwms[NUM_PWM_BOARDS] = {
-    Adafruit_PWMServoDriver(0x40),  // First PCA9685, I2C address 0x40
-    // Adafruit_PWMServoDriver(0x41),  // Second PCA9685, I2C address 0x41
-    // Adafruit_PWMServoDriver(0x42)   // Third PCA9685, I2C address 0x42
+    Adafruit_PWMServoDriver(0x40),
 };
 
 // Turnout class definition
