@@ -5,18 +5,19 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Adafruit_ADS1X15.h>
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-// Define the min and max pulse lengths
 #define SERVOMIN  150  // This is the 'minimum' pulse length count (out of 4096)
 #define SERVOMAX  600  // This is the 'maximum' pulse length count (out of 4096)
 #define REPORT_INTERVAL 2000  // Interval to report servo state (in milliseconds)
+#define BUTTON_THRESHOLD_LOW 5000   // Lower threshold for button (CLOSED state)
+#define BUTTON_THRESHOLD_HIGH 10000 // Upper threshold for button (THROWN state)
 
-// Update these with values suitable for your network
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };  // MAC address of the Ethernet shield
 const char* mqtt_server = "mqtt.example.com";         // Named MQTT server
 const char* mqtt_topic_base = "turnout/";             // Base topic for turnouts
@@ -24,13 +25,23 @@ const char* mqtt_topic_base = "turnout/";             // Base topic for turnouts
 EthernetClient ethClient;
 PubSubClient client(ethClient);
 
-// Define PCA9685 instances with their unique I2C addresses
-const int NUM_PWM_BOARDS = 3;  // Number of PCA9685 boards
+const int NUM_ADS1115 = 4;  // Number of ADS1115 devices
+Adafruit_ADS1115* ads[NUM_ADS1115] = { &Adafruit_ADS1115(), &Adafruit_ADS1115(), &Adafruit_ADS1115(), &Adafruit_ADS1115() };
+
+const int ALERT_PINS[] = {2, 3, 4, 5};  // Digital pins connected to the ALERT/RDY pins of the ADS1115s
+
+const int NUM_PWM_BOARDS = 1;  // Number of PCA9685 boards
 Adafruit_PWMServoDriver pwms[NUM_PWM_BOARDS] = {
     Adafruit_PWMServoDriver(0x40),  // First PCA9685, I2C address 0x40
-    Adafruit_PWMServoDriver(0x41),  // Second PCA9685, I2C address 0x41
-    Adafruit_PWMServoDriver(0x42)   // Third PCA9685, I2C address 0x42
+    // Adafruit_PWMServoDriver(0x41),  // Second PCA9685, I2C address 0x41
+    // Adafruit_PWMServoDriver(0x42)   // Third PCA9685, I2C address 0x42
 };
+
+// Function to send feedback to JMRI
+void sendFeedbackToJMRI(const String &turnoutId, const String &state) {
+    String feedbackTopic = String(mqtt_topic_base) + turnoutId + "/feedback";
+    client.publish(feedbackTopic.c_str(), state.c_str(), true);
+}
 
 // Turnout class definition
 class Turnout {
@@ -40,14 +51,18 @@ public:
     int servoNumber;
     int thrownPosition;
     int closedPosition;
+    int adsIndex;         // Index of the ADS1115 in the ads[] array
+    int buttonChannel;    // ADC channel for the button
     bool isThrown;
 
-    Turnout(String tId, int bIdx, int s, int thrownPos, int closedPos) {
+    Turnout(String tId, int bIdx, int s, int thrownPos, int closedPos, int adsIdx, int btnCh) {
         id = tId;
         boardIndex = bIdx;
         servoNumber = s;
         thrownPosition = thrownPos;
         closedPosition = closedPos;
+        adsIndex = adsIdx;
+        buttonChannel = btnCh;
         isThrown = false;
     }
 
@@ -77,21 +92,44 @@ public:
         }
     }
 
-    String getState() {
-        return isThrown ? "THROWN" : "CLOSED";
+    String getStateFromButton() {
+        // Ensure adsIndex is within the range of available ADS1115 devices
+        if (adsIndex >= 0 && adsIndex < NUM_ADS1115) {
+            int16_t adcValue = ads[adsIndex]->readADC_SingleEnded(buttonChannel);
+            if (adcValue > BUTTON_THRESHOLD_HIGH) {
+                return "THROWN";
+            } else if (adcValue < BUTTON_THRESHOLD_LOW) {
+                return "CLOSED";
+            }
+        }
+        return "UNKNOWN";  // If the ADS1115 index is invalid or in between thresholds
     }
 
     void reportState() {
-        sendFeedbackToJMRI(id, getState());
+        String state = getStateFromButton();
+        if (state != "UNKNOWN") {
+            sendFeedbackToJMRI(id, state);
+            isThrown = (state == "THROWN");
+        }
+    }
+
+    void configureAlert() {
+        // Configure the ADS1115 comparator (no additional flags available, just channel and threshold)
+        ads[adsIndex]->startComparator_SingleEnded(buttonChannel, BUTTON_THRESHOLD_HIGH);
     }
 };
 
 // Array of turnouts
 const int NUM_TURNOUTS = 3;  // Number of turnouts
 Turnout turnouts[NUM_TURNOUTS] = {
-    Turnout("turnout1", 0, 0, 90, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("turnout2", 0, 1, 90, 0),  // ID: "turnout2", Board 0 (0x40), Servo 1
-    Turnout("turnout3", 1, 0, 90, 0)   // ID: "turnout3", Board 1 (0x41), Servo 0
+    Turnout("up_storage_1", 0, 0, 90, 0, 0, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0, ADS1115 0x48, Channel 0
+    Turnout("up_storage_2", 0, 1, 90, 0, 0, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0, ADS1115 0x48, Channel 0
+    Turnout("up_storage_3", 0, 2, 90, 0, 0, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0, ADS1115 0x48, Channel 0
+    Turnout("up_storage_4", 0, 3, 90, 0, 0, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0, ADS1115 0x48, Channel 0
+    Turnout("down_storage_1", 0, 4, 90, 0, 0, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0, ADS1115 0x48, Channel 0
+    Turnout("down_storage_2", 0, 5, 90, 0, 0, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0, ADS1115 0x48, Channel 0
+    Turnout("down_storage_3", 0, 6, 90, 0, 0, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0, ADS1115 0x48, Channel 0
+    Turnout("down_storage_4", 0, 7, 90, 0, 0, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0, ADS1115 0x48, Channel 0
 };
 
 // Array to store the last 4 messages
@@ -118,11 +156,6 @@ void updateOLED() {
   display.display();
 }
 
-void sendFeedbackToJMRI(const String &turnoutId, const String &state) {
-  String feedbackTopic = String(mqtt_topic_base) + turnoutId + "/feedback";
-  client.publish(feedbackTopic.c_str(), state.c_str(), true);
-}
-
 void storeMessage(const String &message) {
   // Shift the messages up and store the new message at the end
   for (int i = 0; i < 3; i++) {
@@ -130,6 +163,23 @@ void storeMessage(const String &message) {
   }
   lastMessages[3] = message;
   updateOLED();  // Update OLED with new messages
+}
+
+void alertHandler() {
+  for (int i = 0; i < NUM_TURNOUTS; i++) {
+    // Read the state directly from the ADS1115 using getStateFromButton
+    String state = turnouts[i].getStateFromButton();
+    if (state != "UNKNOWN") {
+      turnouts[i].reportState();
+    }
+  }
+}
+
+void setupInterrupts() {
+  for (int i = 0; i < NUM_ADS1115; i++) {
+    pinMode(ALERT_PINS[i], INPUT);
+    attachInterrupt(digitalPinToInterrupt(ALERT_PINS[i]), alertHandler, FALLING);
+  }
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -186,6 +236,17 @@ void setup() {
 
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+
+  // Initialize all ADS1115 devices and configure comparator alerts
+  for (uint8_t i = 0; i < NUM_ADS1115; i++) {
+    ads[i]->begin(0x48+i);
+  }
+
+  for (int i = 0; i < NUM_TURNOUTS; i++) {
+    turnouts[i].configureAlert();  // Set alert thresholds for each turnout
+  }
+
+  setupInterrupts();  // Set up interrupts for ADS1115 alert handling
 
   for (int i = 0; i < NUM_PWM_BOARDS; i++) {
     pwms[i].begin();
