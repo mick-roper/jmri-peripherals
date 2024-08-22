@@ -14,20 +14,22 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // Define the min and max pulse lengths
 #define SERVOMIN  150  // This is the 'minimum' pulse length count (out of 4096)
 #define SERVOMAX  600  // This is the 'maximum' pulse length count (out of 4096)
+#define REPORT_INTERVAL 2000  // Interval to report servo state (in milliseconds)
 
 // Update these with values suitable for your network
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };  // MAC address of the Ethernet shield
-IPAddress ip(192, 168, 1, 177);                       // IP address for the Arduino
-IPAddress mqtt_server(192, 168, 1, 2);                // IP address of the MQTT broker
+const char* mqtt_server = "mqtt.example.com";         // Named MQTT server
 const char* mqtt_topic_base = "turnout/";             // Base topic for turnouts
 
 EthernetClient ethClient;
 PubSubClient client(ethClient);
 
 // Define PCA9685 instances with their unique I2C addresses
-const int NUM_PWM_BOARDS = 1;  // Number of PCA9685 boards
+const int NUM_PWM_BOARDS = 3;  // Number of PCA9685 boards
 Adafruit_PWMServoDriver pwms[NUM_PWM_BOARDS] = {
-    Adafruit_PWMServoDriver(0x40),
+    Adafruit_PWMServoDriver(0x40),  // First PCA9685, I2C address 0x40
+    Adafruit_PWMServoDriver(0x41),  // Second PCA9685, I2C address 0x41
+    Adafruit_PWMServoDriver(0x42)   // Third PCA9685, I2C address 0x42
 };
 
 // Turnout class definition
@@ -51,69 +53,83 @@ public:
 
     void throwTurnout() {
         isThrown = true;
-        moveServo();
+        moveServo(map(thrownPosition, 0, 90, SERVOMIN, SERVOMAX));
     }
 
     void closeTurnout() {
         isThrown = false;
-        moveServo();
+        moveServo(map(closedPosition, 0, 90, SERVOMIN, SERVOMAX));
     }
 
-    void toggleTurnout() {
-        isThrown = !isThrown;
-        moveServo();
-    }
-
-    void moveServo() {
-        uint16_t pulse = isThrown ? map(thrownPosition, 0, 90, SERVOMIN, SERVOMAX) : map(closedPosition, 0, 90, SERVOMIN, SERVOMAX);
+    void moveServo(uint16_t pulse) {
         if (boardIndex >= 0 && boardIndex < NUM_PWM_BOARDS) {
+            // Move the primary servo to the specified position
             pwms[boardIndex].setPWM(servoNumber, 0, pulse);
+
+            // Move the corresponding servo on the same board at (servoNumber + 8) to fully open/close
+            if (servoNumber + 8 < 16) {  // Ensure we stay within the 16 available channels
+                if (isThrown) {
+                    pwms[boardIndex].setPWM(servoNumber + 8, 0, SERVOMAX);
+                } else {
+                    pwms[boardIndex].setPWM(servoNumber + 8, 0, SERVOMIN);
+                }
+            }
         }
     }
 
     String getState() {
         return isThrown ? "THROWN" : "CLOSED";
     }
+
+    void reportState() {
+        sendFeedbackToJMRI(id, getState());
+    }
 };
 
 // Array of turnouts
-const int NUM_TURNOUTS = 8;  // Number of turnouts
+const int NUM_TURNOUTS = 3;  // Number of turnouts
 Turnout turnouts[NUM_TURNOUTS] = {
-    Turnout("up_fdl_arr_1", 0, 0, 90, 0),
-    Turnout("up_fdl_arr_2", 0, 1, 90, 0),
-    Turnout("up_fdl_dep_1", 0, 2, 90, 0),
-    Turnout("up_fdl_dep_2", 0, 3, 90, 0),
-    Turnout("dn_fdl_arr_1", 0, 4, 90, 0),
-    Turnout("dn_fdl_arr_2", 0, 5, 90, 0),
-    Turnout("dn_fdl_dep_1", 0, 6, 90, 0),
-    Turnout("dn_fdl_dep_2", 0, 7, 90, 0),
+    Turnout("turnout1", 0, 0, 90, 0),  // ID: "turnout1", Board 0 (0x40), Servo 0
+    Turnout("turnout2", 0, 1, 90, 0),  // ID: "turnout2", Board 0 (0x40), Servo 1
+    Turnout("turnout3", 1, 0, 90, 0)   // ID: "turnout3", Board 1 (0x41), Servo 0
 };
 
+// Array to store the last 4 messages
+String lastMessages[4] = {"", "", "", ""};
+
+unsigned long lastReportTime = 0;
+
 void setupOLED() {
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     // If OLED fails, just enter an infinite loop
-    for(;;);
+    for (;;);
   }
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("MQTT Turnout Control");
-  display.display();
-  delay(2000);
-  display.clearDisplay();
 }
 
-void updateOLED(String message) {
+void updateOLED() {
   display.clearDisplay();
   display.setCursor(0, 0);
-  display.println(message);
+  for (int i = 0; i < 4; i++) {
+    display.println(lastMessages[i]);
+  }
   display.display();
 }
 
 void sendFeedbackToJMRI(const String &turnoutId, const String &state) {
   String feedbackTopic = String(mqtt_topic_base) + turnoutId + "/feedback";
   client.publish(feedbackTopic.c_str(), state.c_str(), true);
+}
+
+void storeMessage(const String &message) {
+  // Shift the messages up and store the new message at the end
+  for (int i = 0; i < 3; i++) {
+    lastMessages[i] = lastMessages[i + 1];
+  }
+  lastMessages[3] = message;
+  updateOLED();  // Update OLED with new messages
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -130,16 +146,17 @@ void callback(char* topic, byte* payload, unsigned int length) {
   // Find the corresponding turnout
   for (int i = 0; i < NUM_TURNOUTS; i++) {
     if (turnouts[i].id == turnoutId) {
-      // Execute the command on the found turnout
-      if (message == "THROW") turnouts[i].throwTurnout();
-      else if (message == "CLOSE") turnouts[i].closeTurnout();
-      else if (message == "TOGGLE") turnouts[i].toggleTurnout();
+      // Handle only "THROWN" and "CLOSED" messages
+      if (message == "THROWN") {
+        turnouts[i].throwTurnout();
+      } else if (message == "CLOSED") {
+        turnouts[i].closeTurnout();
+      } else {
+        return;  // Ignore other messages
+      }
 
-      // Update OLED with the received command
-      updateOLED("Turnout " + turnoutId + ": " + message);
-
-      // Send feedback to JMRI with the new state
-      sendFeedbackToJMRI(turnoutId, turnouts[i].getState());
+      // Store the message to be displayed on the OLED
+      storeMessage("Turnout " + turnoutId + ": " + message);
 
       break;
     }
@@ -164,7 +181,7 @@ void reconnect() {
 
 void setup() {
   // Start Ethernet and connect to network
-  Ethernet.begin(mac, ip);
+  Ethernet.begin(mac);
   delay(1000);  // Allow the Ethernet shield to initialize
 
   client.setServer(mqtt_server, 1883);
@@ -183,4 +200,13 @@ void loop() {
     reconnect();
   }
   client.loop();
+
+  // Periodically report the state of each turnout every 2 seconds
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastReportTime >= REPORT_INTERVAL) {
+    lastReportTime = currentMillis;
+    for (int i = 0; i < NUM_TURNOUTS; i++) {
+      turnouts[i].reportState();
+    }
+  }
 }
