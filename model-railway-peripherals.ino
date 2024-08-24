@@ -6,13 +6,16 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#define USE_SERIAL
+// #define USE_OLED
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-#define SERVOMIN  150  // This is the 'minimum' pulse length count (out of 4096)
-#define SERVOMAX  600  // This is the 'maximum' pulse length count (out of 4096)
+#define SERVOMIN 150          // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX 600          // This is the 'maximum' pulse length count (out of 4096)
 #define REPORT_INTERVAL 2000  // Interval to report servo state (in milliseconds)
 
 // Updated MAC address and MQTT server IP
@@ -25,110 +28,102 @@ PubSubClient client(ethClient);
 
 const int NUM_PWM_BOARDS = 1;  // Number of PCA9685 boards
 Adafruit_PWMServoDriver pwms[NUM_PWM_BOARDS] = {
-    Adafruit_PWMServoDriver(0x40),  // First PCA9685, I2C address 0x40
-    // Adafruit_PWMServoDriver(0x41),  // Second PCA9685, I2C address 0x41
-    // Adafruit_PWMServoDriver(0x42)   // Third PCA9685, I2C address 0x42
+  Adafruit_PWMServoDriver(0x40),  // First PCA9685, I2C address 0x40
 };
 
 // Centralized function for serial logging
-void logMessage(const String &message) {
-    if (Serial) {
-        Serial.println(message);
-    }
+void logMessage(const String& message) {
+#ifdef USE_SERIAL
+  if (Serial) {
+    Serial.println(message);
+  }
+#endif
 }
 
 // Function to send feedback to JMRI without serial logging
-void sendFeedbackToJMRI(const String &turnoutId, const String &state) {
-    String feedbackTopic = String(mqtt_topic_base) + turnoutId + "/feedback";
-    client.publish(feedbackTopic.c_str(), state.c_str(), true);
+void sendFeedbackToJMRI(const String& turnoutId, const String& state) {
+  String feedbackTopic = String(mqtt_topic_base) + turnoutId + "/feedback";
+  client.publish(feedbackTopic.c_str(), state.c_str(), true);
 }
 
 // Turnout class definition
 class Turnout {
 public:
-    String id;
-    int boardIndex;
-    int servoNumber;
-    int thrownPosition;
-    int closedPosition;
-    bool isThrown;
+  String id;
+  uint8_t boardIndex;
+  uint8_t pin;
+  uint16_t thrownPosition;
+  uint16_t closedPosition;
+  bool isThrown;
 
-    Turnout(String tId, int bIdx, int s, int thrownPos, int closedPos) {
-        id = tId;
-        boardIndex = bIdx;
-        servoNumber = s;
-        thrownPosition = thrownPos;
-        closedPosition = closedPos;
-        isThrown = false;
+  Turnout(String tId, uint8_t bIdx, uint8_t pin, uint16_t thrownPos, uint16_t closedPos)
+    : id(tId), boardIndex(bIdx), pin(pin), thrownPosition(thrownPos), closedPosition(closedPos), isThrown(false) {}
+
+  void throwTurnout() {
+    isThrown = true;
+    moveServo(map(thrownPosition, 0, 90, SERVOMIN, SERVOMAX));
+    logMessage("Turnout " + id + " thrown");
+  }
+
+  void closeTurnout() {
+    isThrown = false;
+    moveServo(map(closedPosition, 0, 90, SERVOMIN, SERVOMAX));
+    logMessage("Turnout " + id + " closed");
+  }
+
+  void reportState() {
+    String state = isThrown ? "THROWN" : "CLOSED";
+    sendFeedbackToJMRI(id, state);
+  }
+
+  void moveServo(uint16_t pulse) {
+    if (boardIndex >= 0 && boardIndex < NUM_PWM_BOARDS) {
+      logMessage("Board: " + String(boardIndex) + " pin: " + String(pin) + " pulse: " + String(pulse));
+      // Move the primary servo to the specified position
+      pwms[boardIndex].setPWM(pin, 0, pulse);
     }
-
-    void throwTurnout() {
-        isThrown = true;
-        moveServo(map(thrownPosition, 0, 90, SERVOMIN, SERVOMAX));
-        logMessage("Turnout " + id + " thrown");
-    }
-
-    void closeTurnout() {
-        isThrown = false;
-        moveServo(map(closedPosition, 0, 90, SERVOMIN, SERVOMAX));
-        logMessage("Turnout " + id + " closed");
-    }
-
-    void moveServo(uint16_t pulse) {
-        if (boardIndex >= 0 && boardIndex < NUM_PWM_BOARDS) {
-            // Move the primary servo to the specified position
-            pwms[boardIndex].setPWM(servoNumber, 0, pulse);
-
-            // Move the corresponding servo on the same board at (servoNumber + 8) to fully open/close
-            if (servoNumber + 8 < 16) {  // Ensure we stay within the 16 available channels
-                if (isThrown) {
-                    pwms[boardIndex].setPWM(servoNumber + 8, 0, SERVOMAX);
-                    logMessage("Secondary servo " + String(servoNumber + 8) + " on board " + String(boardIndex) + " set to max");
-                } else {
-                    pwms[boardIndex].setPWM(servoNumber + 8, 0, SERVOMIN);
-                    logMessage("Secondary servo " + String(servoNumber + 8) + " on board " + String(boardIndex) + " set to min");
-                }
-            }
-        }
-    }
-
-    void reportState() {
-        String state = isThrown ? "THROWN" : "CLOSED";
-        sendFeedbackToJMRI(id, state);
-    }
+  }
 };
 
 // Array of turnouts
 const int NUM_TURNOUTS = 8;  // Number of turnouts
 Turnout turnouts[NUM_TURNOUTS] = {
-    Turnout("lower_storage_1", 0, 0, 60, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("lower_storage_2", 0, 1, 60, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("lower_storage_3", 0, 2, 60, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("lower_storage_4", 0, 3, 60, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("lower_storage_5", 0, 4, 60, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("lower_storage_6", 0, 5, 60, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("lower_storage_7", 0, 6, 60, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
-    Turnout("lower_storage_8", 0, 7, 60, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
+  Turnout("lower_storage_1", 0, 0, 75, 30),  // ID: "turnout1", Board 0 (0x40), Servo 0
+  Turnout("lower_storage_2", 0, 1, 75, 30),
+  Turnout("lower_storage_3", 0, 2, 75, 30),
+  Turnout("lower_storage_4", 0, 3, 75, 30),
+  Turnout("lower_storage_5", 0, 4, 75, 30),
+  Turnout("lower_storage_6", 0, 5, 75, 30),
+  Turnout("lower_storage_7", 0, 6, 75, 30),
+  Turnout("lower_storage_8", 0, 7, 75, 30),
 };
 
 // Array to store the last 4 messages
-String lastMessages[4] = {"", "", "", ""};
+String lastMessages[4] = { "", "", "", "" };
 
 unsigned long lastReportTime = 0;
 
 void setupOLED() {
+#ifdef USE_OLED
+  logMessage("initialising OLED...");
+
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    logMessage("OLED initialization failed");
     // If OLED fails, just enter an infinite loop
-    for (;;);
+    logMessage("OLED initialization failed");
+    for (;;)
+      ;
   }
   display.clearDisplay();
-  display.setTextSize(1);
+  display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
+  display.println("display ready!");
+  display.display();
   logMessage("OLED initialized successfully");
+#endif
 }
 
 void updateOLED() {
+#ifdef USE_OLED
   display.clearDisplay();
   display.setCursor(0, 0);
   for (int i = 0; i < 4; i++) {
@@ -136,9 +131,10 @@ void updateOLED() {
   }
   display.display();
   logMessage("OLED updated with new messages");
+#endif
 }
 
-void storeMessage(const String &message) {
+void storeMessage(const String& message) {
   // Shift the messages up and store the new message at the end
   for (int i = 0; i < 3; i++) {
     lastMessages[i] = lastMessages[i + 1];
@@ -203,8 +199,10 @@ void reconnect() {
 }
 
 void setup() {
+#ifdef USE_SERIAL
   Serial.begin(9600);
   logMessage("Serial communication started");
+#endif
 
   // Start Ethernet and connect to network
   Ethernet.begin(mac);
@@ -218,9 +216,12 @@ void setup() {
     pwms[i].begin();
     pwms[i].setPWMFreq(60);  // Analog servos run at ~60 Hz updates
     logMessage("Initialized PWM board " + String(i));
+    delay(1000);
   }
 
   setupOLED();  // Initialize the OLED display
+
+  logMessage("ready!");
 }
 
 void loop() {
