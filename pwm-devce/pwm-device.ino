@@ -6,11 +6,11 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#define USE_SERIAL
-// #define USE_OLED
+// #define USE_SERIAL
+#define USE_OLED
 
 #define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
+#define SCREEN_HEIGHT 32
 #define OLED_RESET -1
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -114,7 +114,7 @@ void setupOLED() {
       ;
   }
   display.clearDisplay();
-  display.setTextSize(2);
+  display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.println("display ready!");
   display.display();
@@ -171,7 +171,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
       }
 
       // Store the message to be displayed on the OLED
-      storeMessage("Turnout " + turnoutId + ": " + message);
+      storeMessage(turnoutId + ": " + message);
 
       break;
     }
