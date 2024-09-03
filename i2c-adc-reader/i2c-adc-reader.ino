@@ -4,10 +4,11 @@
 #include <Adafruit_ADS1X15.h>
 
 // Static MAC address array
-byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; // Set your MAC address here
+byte mac[] = { 0xA0, 0x02, 0x05, 0xEF, 0xFE, 0xED }; // Set your MAC address here
 
 // MQTT server address
-const char* mqttServer = "192.168.1.100"; // Replace with your MQTT broker's IP address
+const char* mqttServer = "192.168.178.69"; // Replace with your MQTT broker's IP address
+const char* mqttClientName = "sensor-unit-1";
 
 // Initialize Ethernet client
 EthernetClient ethClient;
@@ -203,7 +204,7 @@ void reconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
     // Attempt to connect
-    if (client.connect("ArduinoClient")) {
+    if (client.connect(mqttClientName)) {
       errorState &= ~0b0100; // Clear bit 2 (MQTT connection error)
       updateErrorLEDs();
     } else {
